@@ -1,0 +1,106 @@
+.
+├── backend
+│   ├── combined.log
+│   ├── Dockerfile
+│   ├── .env
+│   ├── error.log
+│   ├── package.json
+│   ├── package-lock.json
+│   └── src
+│       ├── app.js
+│       ├── config
+│       │   ├── database.js
+│       │   └── logger.js
+│       ├── {config,controllers,middleware,models,routes,services
+│       │   └── {google,notifications},utils}
+│       ├── controllers
+│       │   ├── authController.js
+│       │   ├── matchController.js
+│       │   ├── notificationController.js
+│       │   ├── teamController.js
+│       │   └── userController.js
+│       ├── middleware
+│       │   └── auth.js
+│       ├── models
+│       │   ├── Match.js
+│       │   ├── Notification.js
+│       │   ├── SheetTracking.js
+│       │   ├── Team.js
+│       │   └── User.js
+│       ├── routes
+│       │   ├── auth.js
+│       │   ├── matches.js
+│       │   ├── notifications.js
+│       │   ├── teams.js
+│       │   └── users.js
+│       └── services
+│           └── notificationService.js
+├── backup
+│   ├── app
+│   │   ├── index.js
+│   │   └── package.json
+│   ├── docker-compose.yml
+│   └── Dockerfile
+├── docker-compose.temp.yml
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.temp
+├── frontend
+│   ├── Dockerfile
+│   ├── .env.development
+│   ├── .gitignore
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── public
+│   │   ├── favicon.ico
+│   │   ├── index.html
+│   │   ├── logo192.png
+│   │   ├── logo512.png
+│   │   ├── manifest.json
+│   │   └── robots.txt
+│   ├── README.md
+│   └── src
+│       ├── App.css
+│       ├── App.js
+│       ├── App.test.js
+│       ├── components
+│       │   ├── auth
+│       │   ├── common
+│       │   │   ├── AdminRoute.js
+│       │   │   ├── LoadingScreen.js
+│       │   │   └── PrivateRoute.js
+│       │   ├── icons
+│       │   │   └── VolleyballIcon.js
+│       │   └── layout
+│       │       └── MainLayout.js
+│       ├── context
+│       │   └── AuthContext.js
+│       ├── index.css
+│       ├── index.js
+│       ├── logo.svg
+│       ├── pages
+│       │   ├── auth
+│       │   │   ├── Login.js
+│       │   │   └── Register.js
+│       │   ├── Dashboard.js
+│       │   ├── match
+│       │   │   └── MatchDetails.js
+│       │   ├── Matches.js
+│       │   ├── notifications
+│       │   │   └── Notifications.js
+│       │   ├── Notifications.js
+│       │   ├── Subscriptions.js
+│       │   └── Teams.js
+│       ├── reportWebVitals.js
+│       ├── services
+│       │   ├── api.js
+│       │   ├── authService.js
+│       │   ├── matchService.js
+│       │   ├── notificationService.js
+│       │   ├── teamService.js
+│       │   └── userService.js
+│       └── setupTests.js
+├── .gitignore
+└── tree_clubseries.txt
+
+26 directories, 77 files

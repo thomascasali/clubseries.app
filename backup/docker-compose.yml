@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  clubseries:
+    build: .
+    container_name: clubseries_nodejs
+    restart: always
+    networks:
+      - webnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clubseries.rule=Host(`clubseries.app`) || Host(`www.clubseries.app`)"
+      - "traefik.http.routers.clubseries.entrypoints=websecure"
+      - "traefik.http.routers.clubseries.tls.certresolver=myresolver"
+      - "traefik.http.services.clubseries.loadbalancer.server.port=3000"
+
+networks:
+  webnet:
+    external: true
