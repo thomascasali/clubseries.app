@@ -1,13 +1,16 @@
 const cron = require('node-cron');
 const logger = require('../config/logger');
-const googleSheetsService = require('./googleSheetsService');
-const Match = require('../models/Match');
-const Team = require('../models/Team');
-const notificationService = require('./notificationService');
 const { getSheetIdForCategory } = require('../utils/sheetsUtils');
+const googleSheetsService = require('./googleSheetsService');
+const Team = require('../models/Team');
+const Match = require('../models/Match');
+const User = require('../models/User');
+const Notification = require('../models/Notification');
 
-// Elenco di tutte le categorie
-const ALL_CATEGORIES = [
+/**
+ * Categorie supportate per la sincronizzazione
+ */
+const CATEGORIES = [
   'Under 21 M', 'Under 21 F', 'Eccellenza M', 'Eccellenza F', 
   'Amatoriale M', 'Amatoriale F', 'Over 35 F', 'Over 40 F', 
   'Over 43 M', 'Over 50 M', 'Serie A Maschile', 'Serie A Femminile', 
@@ -15,116 +18,195 @@ const ALL_CATEGORIES = [
 ];
 
 /**
- * Sincronizza i dati per una categoria specifica
- * @param {string} category - Categoria da sincronizzare
+ * Invia notifiche agli utenti per le partite aggiornate
+ * @param {Array} matches - Array di partite sincronizzate o aggiornate
+ * @param {boolean} isNew - Indica se sono partite nuove o aggiornate
  */
-const syncCategory = async (category) => {
+const sendMatchNotifications = async (matches, isNew = false) => {
   try {
-    const spreadsheetId = getSheetIdForCategory(category);
-    
-    if (!spreadsheetId) {
-      logger.warn(`No spreadsheet configured for category ${category}`);
-      return;
+    for (const match of matches) {
+      // Assicurati che i riferimenti alle squadre siano popolati
+      await match.populate('teamA', 'name category');
+      await match.populate('teamB', 'name category');
+      
+      // Trova gli utenti iscritti alle squadre
+      const usersTeamA = await User.find({ 
+        subscribedTeams: match.teamA._id,
+        isActive: true
+      });
+      
+      const usersTeamB = await User.find({ 
+        subscribedTeams: match.teamB._id,
+        isActive: true
+      });
+      
+      // Combina gli utenti unici
+      const uniqueUsers = [...new Map([
+        ...usersTeamA.map(u => [u._id.toString(), u]),
+        ...usersTeamB.map(u => [u._id.toString(), u])
+      ]).values()];
+      
+      // Formatta la data per la notifica
+      const dateOptions = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      };
+      const formattedDate = match.date 
+        ? new Date(match.date).toLocaleDateString('it-IT', dateOptions)
+        : 'Data da definire';
+      
+      // Crea notifiche per gli utenti
+      for (const user of uniqueUsers) {
+        // Determina se l'utente è iscritto alla squadra A o B (o entrambe)
+        const isTeamA = usersTeamA.some(u => u._id.toString() === user._id.toString());
+        const isTeamB = usersTeamB.some(u => u._id.toString() === user._id.toString());
+        
+        // Scegli la squadra appropriata per la notifica
+        const teamId = isTeamA ? match.teamA._id : match.teamB._id;
+        const myTeam = isTeamA ? match.teamA.name : match.teamB.name;
+        const otherTeam = isTeamA ? match.teamB.name : match.teamA.name;
+        
+        // Crea il messaggio della notifica
+        let message;
+        if (isNew) {
+          message = `🏐 Nuova partita programmata!\n\n`;
+        } else {
+          message = `🔄 Aggiornamento partita!\n\n`;
+        }
+        
+        message += `${myTeam} vs ${otherTeam}\n`;
+        message += `Data: ${formattedDate}\n`;
+        message += `Orario: ${match.time}\n`;
+        message += `Campo: ${match.court}\n`;
+        message += `Fase: ${match.phase}\n`;
+        
+        // Crea la notifica
+        await Notification.create({
+          user: user._id,
+          team: teamId,
+          match: match._id,
+          type: 'match_scheduled',
+          message,
+          status: 'pending'
+        });
+        
+        logger.info(`Notification created for user ${user._id} about match ${match._id}`);
+      }
     }
-    
-    logger.info(`Starting sync for category ${category}`);
-    
-    // Sincronizza team
-    const teams = await googleSheetsService.syncTeamsFromSheet(
-      spreadsheetId,
-      category,
-      Team
-    );
-    
-    logger.info(`Synced ${teams.length} teams for ${category}`);
-    
-    // Sincronizza partite
-    const matches = await googleSheetsService.syncMatchesFromSheet(
-      spreadsheetId,
-      category,
-      Match,
-      Team
-    );
-    
-    logger.info(`Synced ${matches.length} matches for ${category}`);
-    
-    // Sincronizza risultati
-    const matchesWithResults = await Match.find({
-      category,
-      scoreA: { $exists: true, $ne: [] },
-      scoreB: { $exists: true, $ne: [] }
-    }).populate('teamA teamB');
-    
-    await googleSheetsService.syncMatchesToSheet(
-      spreadsheetId,
-      category,
-      matchesWithResults
-    );
-    
-    logger.info(`Synced results for ${matchesWithResults.length} matches for ${category}`);
-    
-    // Processa notifiche
-    await notificationService.processNotifications();
-    
-    logger.info(`Completed sync for category ${category}`);
   } catch (error) {
-    logger.error(`Error syncing category ${category}: ${error.message}`);
+    logger.error(`Error sending match notifications: ${error.message}`);
   }
 };
 
 /**
- * Inizializza il pianificatore di sincronizzazione
+ * Funzione per sincronizzare dati da Google Sheets
+ */
+const syncFromGoogleSheets = async () => {
+  logger.info('Starting scheduled sync from Google Sheets...');
+  
+  let successCount = 0;
+  let errorCount = 0;
+  
+  for (const category of CATEGORIES) {
+    try {
+      // Ottieni l'ID del foglio per questa categoria
+      const spreadsheetId = getSheetIdForCategory(category);
+      
+      // Salta se non configurato
+      if (!spreadsheetId) {
+        logger.warn(`Skipping category ${category}: No spreadsheet ID configured`);
+        continue;
+      }
+      
+      logger.info(`Syncing category: ${category}`);
+      
+      // Sincronizza team
+      const teams = await googleSheetsService.syncTeamsFromSheet(
+        spreadsheetId,
+        category,
+        Team
+      );
+      
+      // Conta il numero di partite prima della sincronizzazione
+      const matchCountBefore = await Match.countDocuments({ category });
+      
+      // Sincronizza partite
+      const matches = await googleSheetsService.syncMatchesFromSheet(
+        spreadsheetId,
+        category,
+        Match,
+        Team
+      );
+      
+      // Conta quante partite sono state create o aggiornate
+      const newMatchCount = matches.length - matchCountBefore;
+      
+      // Se ci sono nuove partite, invia notifiche
+      if (newMatchCount > 0) {
+        // Trova le partite più recenti per questa categoria
+        const newMatches = await Match.find({ category })
+          .sort({ createdAt: -1 })
+          .limit(newMatchCount);
+        
+        // Invia notifiche per le nuove partite
+        await sendMatchNotifications(newMatches, true);
+        
+        logger.info(`Sent notifications for ${newMatchCount} new matches in ${category}`);
+      }
+      
+      // Controlla quali partite sono state aggiornate (non nuove)
+      const updatedMatches = matches.filter(match => 
+        match.updatedAt && match.createdAt && 
+        match.updatedAt.getTime() > match.createdAt.getTime() + 60000 // +1 minuto per evitare falsi positivi
+      );
+      
+      // Se ci sono partite aggiornate, invia notifiche
+      if (updatedMatches.length > 0) {
+        await sendMatchNotifications(updatedMatches, false);
+        logger.info(`Sent notifications for ${updatedMatches.length} updated matches in ${category}`);
+      }
+      
+      logger.info(`Synced ${teams.length} teams and ${matches.length} matches for ${category}`);
+      successCount++;
+    } catch (error) {
+      logger.error(`Error syncing category ${category} from Google Sheets: ${error.message}`);
+      errorCount++;
+    }
+  }
+  
+  logger.info(`Completed sync from Google Sheets: ${successCount} successful, ${errorCount} failed`);
+};
+
+/**
+ * Inizializza lo scheduler di sincronizzazione
  */
 const initSyncScheduler = () => {
-  // Sincronizza tutte le categorie ogni ora
-  // Formato cron: minuto ora giorno mese giorno_settimana
-  // "0 * * * *" significa "ogni ora all'inizio dell'ora"
-  cron.schedule('0 * * * *', async () => {
-    logger.info('Starting scheduled sync of all categories');
-    
-    for (const category of ALL_CATEGORIES) {
-      await syncCategory(category);
+  // Sincronizza da Google Sheets ogni 30 minuti
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      await syncFromGoogleSheets();
+    } catch (error) {
+      logger.error(`Unhandled error in syncFromGoogleSheets cron job: ${error.message}`);
     }
-    
-    logger.info('Completed scheduled sync of all categories');
   });
   
-  // Sincronizza i risultati ogni 5 minuti
-  cron.schedule('*/5 * * * *', async () => {
-    logger.info('Starting scheduled sync of match results');
-    
-    for (const category of ALL_CATEGORIES) {
-      try {
-        const spreadsheetId = getSheetIdForCategory(category);
-        
-        if (!spreadsheetId) continue;
-        
-        // Sincronizza solo i risultati
-        const matchesWithResults = await Match.find({
-          category,
-          scoreA: { $exists: true, $ne: [] },
-          scoreB: { $exists: true, $ne: [] }
-        }).populate('teamA teamB');
-        
-        await googleSheetsService.syncMatchesToSheet(
-          spreadsheetId,
-          category,
-          matchesWithResults
-        );
-        
-        logger.info(`Synced results for ${matchesWithResults.length} matches for ${category}`);
-      } catch (error) {
-        logger.error(`Error syncing results for ${category}: ${error.message}`);
-      }
+  // Esegui subito la sincronizzazione all'avvio
+  setTimeout(async () => {
+    try {
+      logger.info('Running initial sync...');
+      await syncFromGoogleSheets();
+    } catch (error) {
+      logger.error(`Error in initial sync: ${error.message}`);
     }
-    
-    logger.info('Completed scheduled sync of match results');
-  });
+  }, 10000); // Attendi 10 secondi per assicurarsi che il database sia connesso
   
   logger.info('Sync scheduler initialized');
 };
 
 module.exports = {
   initSyncScheduler,
-  syncCategory
+  syncFromGoogleSheets,
+  sendMatchNotifications
 };

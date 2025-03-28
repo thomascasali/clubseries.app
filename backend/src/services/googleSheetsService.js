@@ -562,25 +562,52 @@ const syncMatchesFromSheet = async (spreadsheetId, category, Match, Team) => {
       let match = await Match.findOne({ matchId: matchData.matchId });
       
       if (match) {
-        // Aggiorna la partita esistente
-        match.phase = matchData.phase;
-        match.date = matchData.date;
-        match.time = matchData.time;
-        match.court = matchData.court;
-        match.teamA = teamA._id;
-        match.teamB = teamB._id;
-        match.spreadsheetRow = matchData.spreadsheetRow;
-        match.sheetName = matchData.sheetName;
-        
-        // Aggiorna i risultati solo se non sono già stati confermati
-        if (!match.confirmedByTeamA || !match.confirmedByTeamB) {
-          match.scoreA = matchData.scoreA;
-          match.scoreB = matchData.scoreB;
-          match.result = matchData.result;
-        }
-        
-        await match.save();
-        logger.info(`Updated match ${matchData.matchId} from spreadsheet`);
+        // Verifica se ci sono modifiche rispetto ai dati salvati
+          const hasDateChanged = match.date && matchData.date && 
+          match.date.getTime() !== new Date(matchData.date).getTime();
+          const hasTimeChanged = match.time !== matchData.time;
+          const hasCourtChanged = match.court !== matchData.court;
+          const hasPhaseChanged = match.phase !== matchData.phase;
+
+          // Salva i dati originali prima dell'aggiornamento
+          const originalData = {
+            date: match.date,
+            time: match.time,
+            court: match.court,
+            phase: match.phase
+          };
+
+          // Aggiorna i campi della partita
+          match.phase = matchData.phase;
+          match.date = matchData.date;
+          match.time = matchData.time;
+          match.court = matchData.court;
+          match.teamA = teamA._id;
+          match.teamB = teamB._id;
+          match.spreadsheetRow = matchData.spreadsheetRow;
+          match.sheetName = matchData.sheetName;
+
+          // Aggiorna i risultati solo se non sono già stati confermati
+          if (!match.confirmedByTeamA || !match.confirmedByTeamB) {
+            match.scoreA = matchData.scoreA;
+            match.scoreB = matchData.scoreB;
+            match.result = matchData.result;
+          }
+
+          // Se c'è stato un cambiamento significativo, aggiorniamo l'timestamp
+          if (hasDateChanged || hasTimeChanged || hasCourtChanged || hasPhaseChanged) {
+            // Forza l'aggiornamento del timestamp per la notifica
+            match.updatedAt = new Date();
+            
+            logger.info(`Detected changes in match ${matchData.matchId}:`);
+            if (hasDateChanged) logger.info(`- Date changed from ${originalData.date} to ${match.date}`);
+            if (hasTimeChanged) logger.info(`- Time changed from ${originalData.time} to ${match.time}`);
+            if (hasCourtChanged) logger.info(`- Court changed from ${originalData.court} to ${match.court}`);
+            if (hasPhaseChanged) logger.info(`- Phase changed from ${originalData.phase} to ${match.phase}`);
+          }
+
+          await match.save();
+          logger.info(`Updated match ${matchData.matchId} from spreadsheet`);
       } else {
         // Crea una nuova partita
         match = await Match.create({
@@ -703,11 +730,39 @@ const testSheetConnection = async (spreadsheetId) => {
 };
 
 /**
- * Helper per parsare le date in formato italiano
- * @param {string} dateStr - Data in formato italiano (DD/MM/YYYY)
+ * Helper per parsare le date in vari formati italiani
+ * @param {string} dateStr - Data in formato italiano (DD/MM/YYYY o formati abbreviati come "2-mag")
  * @returns {Date} - Oggetto Date
  */
 const parseDate = (dateStr) => {
+  // Se la data è vuota o null
+  if (!dateStr || dateStr.trim() === '') {
+    return null;
+  }
+  
+  // Mappatura dei mesi abbreviati italiani ai numeri
+  const monthsMap = {
+    'gen': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'mag': 4, 'giu': 5,
+    'lug': 6, 'ago': 7, 'set': 8, 'ott': 9, 'nov': 10, 'dic': 11
+  };
+  
+  // Verifica se la data è nel formato "1-mag" (giorno-mese abbreviato)
+  const italianShortDateRegex = /^(\d{1,2})-([a-z]{3})$/i;
+  const shortMatch = dateStr.match(italianShortDateRegex);
+  
+  if (shortMatch) {
+    const day = parseInt(shortMatch[1], 10);
+    const monthAbbr = shortMatch[2].toLowerCase();
+    
+    // Verifica se l'abbreviazione del mese è valida
+    if (monthsMap.hasOwnProperty(monthAbbr)) {
+      const month = monthsMap[monthAbbr];
+      // Assumiamo l'anno 2025 per le finali
+      const year = 2025;
+      return new Date(year, month, day);
+    }
+  }
+  
   // Verifica se la data è nel formato italiano (gg/mm/aaaa)
   const italianDateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
   const match = dateStr.match(italianDateRegex);

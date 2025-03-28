@@ -42,7 +42,11 @@
 │   │   │   └── syncScheduler.js
 │   │   └── utils
 │   │       └── sheetsUtils.js
-│   └── test-sheets-connection.js
+│   ├── test-date-parsing.js
+│   ├── test-read-pools.js
+│   ├── test-sheets-connection.js
+│   ├── test-sheet-sync.js
+│   └── test-sync-all.js
 ├── backup
 │   ├── app
 │   │   ├── index.js
@@ -111,4 +115,4 @@
 ├── .gitignore
 └── tree_clubseries.txt
 
-27 directories, 84 files
+27 directories, 88 files

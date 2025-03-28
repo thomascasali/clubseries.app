@@ -29,6 +29,7 @@ import {
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon,
   AdminPanelSettings as AdminIcon,
+  Favorite,
 } from '@mui/icons-material';
 import { AuthContext } from '../../context/AuthContext';
 import VolleyballIcon from '../icons/VolleyballIcon';
@@ -86,7 +87,7 @@ const MainLayout = () => {
     },
     {
       text: 'Le mie iscrizioni',
-      icon: <SportsIcon />,
+      icon: <Favorite />,
       path: '/subscriptions',
     },
   ];
