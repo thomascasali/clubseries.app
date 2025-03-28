@@ -1,23 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const { 
-  testConnection,
-  getSheetIdForCategory,
-  importTeams,
-  importMatches,
-  syncToSheets,
-  syncAllCategories
+  testConnection, 
+  syncTeams, 
+  syncMatches,
+  syncResults,
+  syncAll
 } = require('../controllers/googleSheetsController');
 const { protect, authorize } = require('../middleware/auth');
 
-// Rotte pubbliche (solo per test)
-router.get('/test-connection/:spreadsheetId', testConnection);
-router.get('/category/:category', getSheetIdForCategory);
+// Proteggere tutte le route con autenticazione e autorizzazione admin
+router.use(protect);
+router.use(authorize('admin', 'super_admin'));
 
-// Rotte protette
-router.post('/import-teams', protect, authorize('admin', 'super_admin'), importTeams);
-router.post('/import-matches', protect, authorize('admin', 'super_admin'), importMatches);
-router.post('/sync-to-sheets', protect, authorize('admin', 'super_admin'), syncToSheets);
-router.post('/sync-all-categories', protect, authorize('admin', 'super_admin'), syncAllCategories);
+// Route per testare la connessione
+router.get('/test/:category', testConnection);
+
+// Route per sincronizzare i team
+router.post('/sync/teams/:category', syncTeams);
+
+// Route per sincronizzare le partite
+router.post('/sync/matches/:category', syncMatches);
+
+// Route per sincronizzare i risultati
+router.post('/sync/results/:category', syncResults);
+
+// Route per sincronizzare tutto
+router.post('/sync/all', syncAll);
 
 module.exports = router;

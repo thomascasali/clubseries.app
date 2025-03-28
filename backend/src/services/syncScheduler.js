@@ -1,58 +1,130 @@
 const cron = require('node-cron');
-const Team = require('../models/Team');
-const Match = require('../models/Match');
-const googleSheetsService = require('./googleSheetsService');
 const logger = require('../config/logger');
+const googleSheetsService = require('./googleSheetsService');
+const Match = require('../models/Match');
+const Team = require('../models/Team');
+const notificationService = require('./notificationService');
+const { getSheetIdForCategory } = require('../utils/sheetsUtils');
+
+// Elenco di tutte le categorie
+const ALL_CATEGORIES = [
+  'Under 21 M', 'Under 21 F', 'Eccellenza M', 'Eccellenza F', 
+  'Amatoriale M', 'Amatoriale F', 'Over 35 F', 'Over 40 F', 
+  'Over 43 M', 'Over 50 M', 'Serie A Maschile', 'Serie A Femminile', 
+  'Serie B Maschile', 'Serie B Femminile'
+];
 
 /**
- * Avvia la sincronizzazione programmata con Google Sheets
+ * Sincronizza i dati per una categoria specifica
+ * @param {string} category - Categoria da sincronizzare
  */
-const startSyncScheduler = () => {
-  // Esegui la sincronizzazione ogni ora
-  cron.schedule('0 * * * *', async () => {
-    logger.info('Starting scheduled Google Sheets synchronization');
+const syncCategory = async (category) => {
+  try {
+    const spreadsheetId = getSheetIdForCategory(category);
     
-    try {
-      // Ottieni tutte le squadre con spreadsheetId
-      const teams = await Team.find({ spreadsheetId: { $exists: true, $ne: '' } });
-      
-      for (const team of teams) {
-        try {
-          // Sincronizza dal foglio al database
-          await googleSheetsService.syncMatchesFromSheet(
-            team.spreadsheetId,
-            team.category,
-            Match,
-            Team
-          );
-          
-          // Trova le partite per questa categoria
-          const matches = await Match.find({ category: team.category })
-            .populate('teamA', 'name')
-            .populate('teamB', 'name');
-          
-          // Sincronizza dal database al foglio
-          await googleSheetsService.syncMatchesToSheet(
-            team.spreadsheetId,
-            team.category,
-            matches
-          );
-          
-          logger.info(`Completed sync for team ${team.name}, category ${team.category}`);
-        } catch (error) {
-          logger.error(`Error syncing for team ${team.name}: ${error.message}`);
-        }
-      }
-      
-      logger.info('Scheduled Google Sheets synchronization completed');
-    } catch (error) {
-      logger.error(`Error in scheduled sync: ${error.message}`);
+    if (!spreadsheetId) {
+      logger.warn(`No spreadsheet configured for category ${category}`);
+      return;
     }
+    
+    logger.info(`Starting sync for category ${category}`);
+    
+    // Sincronizza team
+    const teams = await googleSheetsService.syncTeamsFromSheet(
+      spreadsheetId,
+      category,
+      Team
+    );
+    
+    logger.info(`Synced ${teams.length} teams for ${category}`);
+    
+    // Sincronizza partite
+    const matches = await googleSheetsService.syncMatchesFromSheet(
+      spreadsheetId,
+      category,
+      Match,
+      Team
+    );
+    
+    logger.info(`Synced ${matches.length} matches for ${category}`);
+    
+    // Sincronizza risultati
+    const matchesWithResults = await Match.find({
+      category,
+      scoreA: { $exists: true, $ne: [] },
+      scoreB: { $exists: true, $ne: [] }
+    }).populate('teamA teamB');
+    
+    await googleSheetsService.syncMatchesToSheet(
+      spreadsheetId,
+      category,
+      matchesWithResults
+    );
+    
+    logger.info(`Synced results for ${matchesWithResults.length} matches for ${category}`);
+    
+    // Processa notifiche
+    await notificationService.processNotifications();
+    
+    logger.info(`Completed sync for category ${category}`);
+  } catch (error) {
+    logger.error(`Error syncing category ${category}: ${error.message}`);
+  }
+};
+
+/**
+ * Inizializza il pianificatore di sincronizzazione
+ */
+const initSyncScheduler = () => {
+  // Sincronizza tutte le categorie ogni ora
+  // Formato cron: minuto ora giorno mese giorno_settimana
+  // "0 * * * *" significa "ogni ora all'inizio dell'ora"
+  cron.schedule('0 * * * *', async () => {
+    logger.info('Starting scheduled sync of all categories');
+    
+    for (const category of ALL_CATEGORIES) {
+      await syncCategory(category);
+    }
+    
+    logger.info('Completed scheduled sync of all categories');
   });
   
-  logger.info('Google Sheets sync scheduler started');
+  // Sincronizza i risultati ogni 5 minuti
+  cron.schedule('*/5 * * * *', async () => {
+    logger.info('Starting scheduled sync of match results');
+    
+    for (const category of ALL_CATEGORIES) {
+      try {
+        const spreadsheetId = getSheetIdForCategory(category);
+        
+        if (!spreadsheetId) continue;
+        
+        // Sincronizza solo i risultati
+        const matchesWithResults = await Match.find({
+          category,
+          scoreA: { $exists: true, $ne: [] },
+          scoreB: { $exists: true, $ne: [] }
+        }).populate('teamA teamB');
+        
+        await googleSheetsService.syncMatchesToSheet(
+          spreadsheetId,
+          category,
+          matchesWithResults
+        );
+        
+        logger.info(`Synced results for ${matchesWithResults.length} matches for ${category}`);
+      } catch (error) {
+        logger.error(`Error syncing results for ${category}: ${error.message}`);
+      }
+    }
+    
+    logger.info('Completed scheduled sync of match results');
+  });
+  
+  logger.info('Sync scheduler initialized');
 };
 
 module.exports = {
-  startSyncScheduler
+  initSyncScheduler,
+  syncCategory
 };

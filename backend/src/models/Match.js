@@ -64,6 +64,10 @@ const MatchSchema = new mongoose.Schema({
   spreadsheetRow: {
     type: Number,
   },
+  sheetName: {
+    type: String,
+    required: false,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Match', MatchSchema);

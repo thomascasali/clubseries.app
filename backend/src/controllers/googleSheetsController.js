@@ -1,407 +1,361 @@
-const { getSheetIdForCategory } = require('../utils/sheetsUtils');
 const googleSheetsService = require('../services/googleSheetsService');
-const Match = require('../models/Match');
 const Team = require('../models/Team');
+const Match = require('../models/Match');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 const logger = require('../config/logger');
+const { getSheetIdForCategory } = require('../utils/sheetsUtils');
 
-// @desc    Testare la connessione a Google Sheets
-// @route   GET /api/sheets/test-connection/:spreadsheetId
-// @access  Public (solo per test)
+/**
+ * @desc    Testa la connessione a Google Sheets
+ * @route   GET /api/google-sheets/test/:category
+ * @access  Private/Admin
+ */
 exports.testConnection = async (req, res) => {
   try {
-    const { spreadsheetId } = req.params;
+    const { category } = req.params;
     
+    // Ottieni l'ID del foglio per questa categoria
+    const spreadsheetId = getSheetIdForCategory(category);
+    
+    // Verifica che l'ID del foglio sia disponibile
     if (!spreadsheetId) {
-      return res.status(400).json({ message: 'Spreadsheet ID è richiesto' });
+      return res.status(400).json({ 
+        success: false, 
+        message: `Categoria non valida o ID del foglio non configurato: ${category}` 
+      });
     }
     
     // Testa la connessione
-    const connectionInfo = await googleSheetsService.testSheetConnection(spreadsheetId);
+    const result = await googleSheetsService.testSheetConnection(spreadsheetId);
     
     res.status(200).json({
-      message: 'Connessione a Google Sheets riuscita',
-      sheetInfo: connectionInfo.sheetInfo,
-      teamsList: connectionInfo.teamsList,
-      matchesSample: connectionInfo.matchesSample
+      success: true,
+      data: result
     });
-    
   } catch (error) {
-    logger.error(`Error in testConnection: ${error.message}`);
-    res.status(500).json({ 
+    logger.error(`Error testing Google Sheets connection: ${error.message}`);
+    res.status(500).json({
+      success: false,
       message: 'Errore nel test di connessione a Google Sheets',
       error: error.message
     });
   }
 };
 
-// @desc    Ottieni l'ID del foglio Google per una categoria
-// @route   GET /api/sheets/category/:category
-// @access  Public
-exports.getSheetIdForCategory = async (req, res) => {
+/**
+ * @desc    Sincronizza i team da Google Sheets al database
+ * @route   POST /api/google-sheets/sync/teams/:category
+ * @access  Private/Admin
+ */
+exports.syncTeams = async (req, res) => {
   try {
     const { category } = req.params;
     
-    const sheetId = getSheetIdForCategory(category);
+    // Ottieni l'ID del foglio per questa categoria
+    const spreadsheetId = getSheetIdForCategory(category);
     
-    if (!sheetId) {
-      return res.status(404).json({ message: `Nessun foglio Google configurato per la categoria ${category}` });
+    // Verifica che l'ID del foglio sia disponibile
+    if (!spreadsheetId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Categoria non valida o ID del foglio non configurato: ${category}` 
+      });
     }
     
-    res.status(200).json({ category, sheetId });
+    // Sincronizza i team
+    const syncedTeams = await googleSheetsService.syncTeamsFromSheet(
+      spreadsheetId,
+      category,
+      Team
+    );
+    
+    res.status(200).json({
+      success: true,
+      count: syncedTeams.length,
+      data: syncedTeams
+    });
   } catch (error) {
-    logger.error(`Error in getSheetIdForCategory: ${error.message}`);
-    res.status(500).json({ message: error.message });
+    logger.error(`Error syncing teams from Google Sheets: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Errore nella sincronizzazione dei team da Google Sheets',
+      error: error.message
+    });
   }
 };
 
-// @desc    Importa squadre dal foglio Google
-// @route   POST /api/sheets/import-teams
-// @access  Private/Admin
-exports.importTeams = async (req, res) => {
+/**
+ * @desc    Sincronizza le partite da Google Sheets al database
+ * @route   POST /api/google-sheets/sync/matches/:category
+ * @access  Private/Admin
+ */
+exports.syncMatches = async (req, res) => {
   try {
-    let { spreadsheetId, category } = req.body;
+    const { category } = req.params;
     
-    if (!spreadsheetId && category) {
-      // Se non è stato fornito un ID ma è stata fornita una categoria, cerca l'ID nelle variabili d'ambiente
-      spreadsheetId = getSheetIdForCategory(category);
+    // Ottieni l'ID del foglio per questa categoria
+    const spreadsheetId = getSheetIdForCategory(category);
+    
+    // Verifica che l'ID del foglio sia disponibile
+    if (!spreadsheetId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Categoria non valida o ID del foglio non configurato: ${category}` 
+      });
     }
     
-    if (!spreadsheetId || !category) {
-      return res.status(400).json({ message: 'Spreadsheet ID e categoria sono richiesti' });
-    }
+    // Prima sincronizza i team per assicurarsi che esistano
+    await googleSheetsService.syncTeamsFromSheet(
+      spreadsheetId,
+      category,
+      Team
+    );
     
-    // Ottieni informazioni sul foglio per estrarre le squadre
-    const connectionInfo = await googleSheetsService.testSheetConnection(spreadsheetId);
-    const teams = connectionInfo.teamsList;
+    // Poi sincronizza le partite
+    const syncedMatches = await googleSheetsService.syncMatchesFromSheet(
+      spreadsheetId,
+      category,
+      Match,
+      Team
+    );
     
-    if (!teams || teams.length === 0) {
-      return res.status(404).json({ message: 'Nessuna squadra trovata nel foglio' });
-    }
-    
-    // Risultati dell'operazione
-    const results = {
-      created: [],
-      existing: [],
-      errors: []
-    };
-    
-    // Genera una password casuale per le squadre
-    const generatePassword = () => {
-      return Math.random().toString(36).slice(-8);
-    };
-    
-    // Crea o aggiorna le squadre nel database
-    for (const teamName of teams) {
-      try {
-        // Verifica se la squadra esiste già
-        const existingTeam = await Team.findOne({ 
-          name: teamName,
-          category
-        });
-        
-        if (existingTeam) {
-          // Aggiorna lo spreadsheetId se necessario
-          if (existingTeam.spreadsheetId !== spreadsheetId) {
-            existingTeam.spreadsheetId = spreadsheetId;
-            await existingTeam.save();
-          }
-          
-          results.existing.push({
-            name: existingTeam.name,
-            _id: existingTeam._id
-          });
-        } else {
-          // Crea la nuova squadra
-          const newTeam = await Team.create({
-            name: teamName,
-            category,
-            spreadsheetId,
-            password: generatePassword(),
-            players: []
-          });
-          
-          results.created.push({
-            name: newTeam.name,
-            _id: newTeam._id,
-            password: newTeam.password // Solo per la prima creazione, così l'admin può condividere la password
-          });
-        }
-      } catch (error) {
-        results.errors.push({
-          team: teamName,
-          error: error.message
-        });
-      }
+    // Se sono state sincronizzate partite, invia notifiche agli utenti iscritti
+    if (syncedMatches.length > 0) {
+      await sendMatchNotifications(syncedMatches);
     }
     
     res.status(200).json({
-      message: `Importazione squadre completata. ${results.created.length} create, ${results.existing.length} già esistenti, ${results.errors.length} errori.`,
-      results
+      success: true,
+      count: syncedMatches.length,
+      data: syncedMatches
     });
-    
   } catch (error) {
-    logger.error(`Error in importTeams: ${error.message}`);
-    res.status(500).json({ message: error.message });
+    logger.error(`Error syncing matches from Google Sheets: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Errore nella sincronizzazione delle partite da Google Sheets',
+      error: error.message
+    });
   }
 };
 
-// @desc    Importa partite dal foglio Google
-// @route   POST /api/sheets/import-matches
-// @access  Private/Admin
-exports.importMatches = async (req, res) => {
+/**
+ * @desc    Sincronizza i risultati delle partite dal database a Google Sheets
+ * @route   POST /api/google-sheets/sync/results/:category
+ * @access  Private/Admin
+ */
+exports.syncResults = async (req, res) => {
   try {
-    let { spreadsheetId, category } = req.body;
+    const { category } = req.params;
     
-    if (!spreadsheetId && category) {
-      // Se non è stato fornito un ID ma è stata fornita una categoria, cerca l'ID nelle variabili d'ambiente
-      spreadsheetId = getSheetIdForCategory(category);
+    // Ottieni l'ID del foglio per questa categoria
+    const spreadsheetId = getSheetIdForCategory(category);
+    
+    // Verifica che l'ID del foglio sia disponibile
+    if (!spreadsheetId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Categoria non valida o ID del foglio non configurato: ${category}` 
+      });
     }
     
-    if (!spreadsheetId || !category) {
-      return res.status(400).json({ message: 'Spreadsheet ID e categoria sono richiesti' });
-    }
+    // Trova tutte le partite per questa categoria che hanno risultati
+    const matches = await Match.find({
+      category,
+      scoreA: { $exists: true, $ne: [] },
+      scoreB: { $exists: true, $ne: [] }
+    }).populate('teamA teamB');
     
-    // Ottieni informazioni sul foglio
-    const response = await googleSheetsService.getSheetInfo(spreadsheetId);
+    // Sincronizza i risultati con il foglio Google
+    await googleSheetsService.syncMatchesToSheet(
+      spreadsheetId,
+      category,
+      matches
+    );
     
-    // Trova tutti i fogli "pool"
-    const poolSheets = response.sheets.filter(sheet => 
-      sheet.title.toLowerCase().includes('pool'));
+    res.status(200).json({
+      success: true,
+      count: matches.length,
+      message: `Sincronizzati risultati di ${matches.length} partite per la categoria ${category}`
+    });
+  } catch (error) {
+    logger.error(`Error syncing results to Google Sheets: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Errore nella sincronizzazione dei risultati con Google Sheets',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Sincronizza tutti i dati per tutte le categorie
+ * @route   POST /api/google-sheets/sync/all
+ * @access  Private/Admin
+ */
+exports.syncAll = async (req, res) => {
+  try {
+    const results = {};
+    const categories = [
+      'Under 21 M', 'Under 21 F', 'Eccellenza M', 'Eccellenza F', 
+      'Amatoriale M', 'Amatoriale F', 'Over 35 F', 'Over 40 F', 
+      'Over 43 M', 'Over 50 M', 'Serie A Maschile', 'Serie A Femminile', 
+      'Serie B Maschile', 'Serie B Femminile'
+    ];
     
-    if (poolSheets.length === 0) {
-      return res.status(404).json({ message: 'Nessun foglio pool trovato' });
-    }
-    
-    // Risultati dell'operazione
-    const results = {
-      created: [],
-      updated: [],
-      errors: []
-    };
-    
-    const today = new Date();
-    
-    // Per ogni foglio pool, importa le partite
-    for (const poolSheet of poolSheets) {
-      const poolName = poolSheet.title;
+    // Per ogni categoria
+    for (const category of categories) {
+      // Ottieni l'ID del foglio per questa categoria
+      const spreadsheetId = getSheetIdForCategory(category);
       
-      // Leggi i dati del pool
-      const data = await googleSheetsService.readSheet(
-        spreadsheetId, 
-        `'${poolName}'!A1:G50` // Adatta il range in base alla tua struttura
-      );
-      
-      if (!data || data.length < 2) {
-        results.errors.push(`Nessun dato trovato nel foglio ${poolName}`);
+      // Salta se l'ID del foglio non è configurato
+      if (!spreadsheetId) {
+        results[category] = {
+          success: false,
+          message: 'ID del foglio non configurato'
+        };
         continue;
       }
       
-      // Trova le righe che contengono partite (quelle con orario nella colonna C)
-      for (let i = 0; i < data.length; i++) {
-        const row = data[i];
+      try {
+        // Sincronizza team
+        const teams = await googleSheetsService.syncTeamsFromSheet(
+          spreadsheetId,
+          category,
+          Team
+        );
         
-        // Verificare che ci sia abbastanza informazioni per una partita
-        if (!row || row.length < 5 || !row[2]) continue;
+        // Sincronizza partite
+        const matches = await googleSheetsService.syncMatchesFromSheet(
+          spreadsheetId,
+          category,
+          Match,
+          Team
+        );
         
-        // Verifica se la riga contiene un orario in formato HH:MM
-        const timeRegex = /^\d{1,2}:\d{2}$/;
-        if (!timeRegex.test(row[2])) continue;
-        
-        // Estrai i dati della partita
-        const matchId = `${category}-${poolName}-${i+1}`;
-        const phase = poolName;
-        const time = row[2];
-        const court = row[3] || 'Campo 1';
-        const teamsCell = row[4] || '';
-        
-        // Estrai i nomi delle squadre dalla cella (es. "Team A vs Team B")
-        const teamsMatch = teamsCell.match(/(.+?)\s+vs\s+(.+)/i);
-        if (!teamsMatch) {
-          results.errors.push(`Formato squadre non valido nella riga ${i+1} del foglio ${poolName}: ${teamsCell}`);
-          continue;
+        // Se sono state sincronizzate partite, invia notifiche
+        if (matches.length > 0) {
+          await sendMatchNotifications(matches);
         }
         
-        const teamAName = teamsMatch[1].trim();
-        const teamBName = teamsMatch[2].trim();
+        // Sincronizza risultati
+        const matchesWithResults = await Match.find({
+          category,
+          scoreA: { $exists: true, $ne: [] },
+          scoreB: { $exists: true, $ne: [] }
+        }).populate('teamA teamB');
         
-        // Trova le squadre nel database
-        const teamA = await Team.findOne({ name: teamAName, category });
-        const teamB = await Team.findOne({ name: teamBName, category });
+        await googleSheetsService.syncMatchesToSheet(
+          spreadsheetId,
+          category,
+          matchesWithResults
+        );
         
-        if (!teamA || !teamB) {
-          results.errors.push(`Squadre non trovate per la partita ${matchId}: ${teamAName} o ${teamBName}`);
-          continue;
-        }
-        
-        // Cerca se la partita esiste già
-        let match = await Match.findOne({ matchId });
-        
-        if (match) {
-          // Aggiorna la partita esistente
-          match.phase = phase;
-          match.time = time;
-          match.court = court;
-          match.teamA = teamA._id;
-          match.teamB = teamB._id;
-          match.spreadsheetRow = i + 1;
-          
-          await match.save();
-          results.updated.push(matchId);
-        } else {
-          // Crea una nuova partita (usa la data corrente per ora)
-          match = await Match.create({
-            matchId,
-            phase,
-            date: today,
-            time,
-            court,
-            teamA: teamA._id,
-            teamB: teamB._id,
-            category,
-            spreadsheetRow: i + 1,
-            result: 'pending'
-          });
-          
-          results.created.push(matchId);
-        }
+        results[category] = {
+          success: true,
+          teams: teams.length,
+          matches: matches.length,
+          results: matchesWithResults.length
+        };
+      } catch (error) {
+        logger.error(`Error syncing category ${category}: ${error.message}`);
+        results[category] = {
+          success: false,
+          message: error.message
+        };
       }
     }
     
     res.status(200).json({
-      message: `Importazione partite completata. ${results.created.length} create, ${results.updated.length} aggiornate, ${results.errors.length} errori.`,
-      results
+      success: true,
+      data: results
     });
-    
   } catch (error) {
-    logger.error(`Error in importMatches: ${error.message}`);
-    res.status(500).json({ message: error.message });
+    logger.error(`Error in syncAll: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Errore nella sincronizzazione di tutti i dati',
+      error: error.message
+    });
   }
 };
 
-// @desc    Sincronizzare risultati dal database a Google Sheets
-// @route   POST /api/sheets/sync-to-sheets
-// @access  Private/Admin
-exports.syncToSheets = async (req, res) => {
+/**
+ * Invia notifiche per le partite sincronizzate
+ * @param {Array} matches - Array di partite sincronizzate
+ */
+const sendMatchNotifications = async (matches) => {
   try {
-    let { spreadsheetId, category } = req.body;
-    
-    if (!spreadsheetId && category) {
-      // Se non è stato fornito un ID ma è stata fornita una categoria, cerca l'ID nelle variabili d'ambiente
-      spreadsheetId = getSheetIdForCategory(category);
-    }
-    
-    if (!spreadsheetId || !category) {
-      return res.status(400).json({ message: 'Spreadsheet ID e categoria sono richiesti' });
-    }
-    
-    // Trova le partite per questa categoria
-    const matches = await Match.find({ category })
-      .populate('teamA', 'name')
-      .populate('teamB', 'name');
-    
-    if (matches.length === 0) {
-      return res.status(404).json({ message: 'Nessuna partita trovata per questa categoria' });
-    }
-    
-    // Esegui la sincronizzazione
-    const results = await googleSheetsService.syncMatchesToSheet(spreadsheetId, category, matches);
-    
-    res.status(200).json({
-      message: `Sincronizzazione completata. ${matches.length} partite aggiornate nel foglio.`,
-      results
-    });
-    
-  } catch (error) {
-    logger.error(`Error in syncToSheets: ${error.message}`);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// @desc    Importa e sincronizza tutte le categorie configurate
-// @route   POST /api/sheets/sync-all-categories
-// @access  Private/Admin
-exports.syncAllCategories = async (req, res) => {
-  try {
-    // Ottieni tutte le categorie configurate
-    const categoryEnvVars = Object.keys(process.env)
-      .filter(key => key.startsWith('GOOGLE_SHEETS_'))
-      .filter(key => process.env[key] && process.env[key] !== 'your_test_spreadsheet_id');
-    
-    if (categoryEnvVars.length === 0) {
-      return res.status(404).json({ message: 'Nessuna categoria configurata nelle variabili d\'ambiente' });
-    }
-    
-    const results = {
-      teamsImported: [],
-      matchesImported: [],
-      syncedToSheets: [],
-      errors: []
-    };
-    
-    // Per ogni categoria configurata
-    for (const envVar of categoryEnvVars) {
-      try {
-        // Estrai la categoria dal nome della variabile d'ambiente
-        // es. GOOGLE_SHEETS_UNDER_21_M -> Under 21 M
-        const categoryKey = envVar.replace('GOOGLE_SHEETS_', '');
-        const category = categoryKey
-          .split('_')
-          .map(word => word === 'M' || word === 'F' ? word : word.charAt(0) + word.slice(1).toLowerCase())
-          .join(' ')
-          .replace('Serie A M', 'Serie A Maschile')
-          .replace('Serie A F', 'Serie A Femminile')
-          .replace('Serie B M', 'Serie B Maschile')
-          .replace('Serie B F', 'Serie B Femminile');
+    for (const match of matches) {
+      // Popola i riferimenti alle squadre
+      await match.populate('teamA', 'name');
+      await match.populate('teamB', 'name');
+      
+      // Trova gli utenti iscritti alle squadre
+      const usersTeamA = await User.find({ 
+        subscribedTeams: match.teamA._id,
+        isActive: true
+      });
+      
+      const usersTeamB = await User.find({ 
+        subscribedTeams: match.teamB._id,
+        isActive: true
+      });
+      
+      // Combina gli utenti unici
+      const uniqueUsers = [...new Map([
+        ...usersTeamA.map(u => [u._id.toString(), u]),
+        ...usersTeamB.map(u => [u._id.toString(), u])
+      ]).values()];
+      
+      // Formatta la data per la notifica
+      const dateOptions = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      };
+      const formattedDate = match.date 
+        ? new Date(match.date).toLocaleDateString('it-IT', dateOptions)
+        : 'Data da definire';
+      
+      // Crea notifiche per gli utenti
+      for (const user of uniqueUsers) {
+        // Determina se l'utente è iscritto alla squadra A o B (o entrambe)
+        const isTeamA = usersTeamA.some(u => u._id.toString() === user._id.toString());
+        const isTeamB = usersTeamB.some(u => u._id.toString() === user._id.toString());
         
-        const spreadsheetId = process.env[envVar];
+        // Scegli la squadra appropriata per la notifica
+        const teamId = isTeamA ? match.teamA._id : match.teamB._id;
+        const myTeam = isTeamA ? match.teamA.name : match.teamB.name;
+        const otherTeam = isTeamA ? match.teamB.name : match.teamA.name;
         
-        // Importa squadre
-        const connectionInfo = await googleSheetsService.testSheetConnection(spreadsheetId);
-        const teams = connectionInfo.teamsList;
+        // Crea il messaggio della notifica
+        let message = `🏐 Nuova partita programmata!\n\n`;
+        message += `${myTeam} vs ${otherTeam}\n`;
+        message += `Data: ${formattedDate}\n`;
+        message += `Orario: ${match.time}\n`;
+        message += `Campo: ${match.court}\n`;
         
-        if (teams && teams.length > 0) {
-          // Implementazione semplificata per la sincronizzazione di massa
-          // Nella pratica, dovremmo riutilizzare il codice di importTeams
-          for (const teamName of teams) {
-            const existingTeam = await Team.findOne({ name: teamName, category });
-            if (!existingTeam) {
-              const newTeam = await Team.create({
-                name: teamName,
-                category,
-                spreadsheetId,
-                password: Math.random().toString(36).slice(-8),
-                players: []
-              });
-              results.teamsImported.push({
-                category,
-                team: teamName,
-                id: newTeam._id
-              });
-            }
-          }
+        // Se questa è un'aggiornamento di una partita esistente
+        if (match.updatedAt && match.createdAt && 
+            match.updatedAt.getTime() !== match.createdAt.getTime()) {
+          message = `🔄 Aggiornamento partita!\n\n` + message;
         }
         
-        // Importa partite (semplificato, reutilizzare il codice di importMatches)
-        // ...
-        
-        // Sincronizza risultati (semplificato, reutilizzare il codice di syncToSheets)
-        // ...
-        
-      } catch (error) {
-        results.errors.push({
-          envVar,
-          error: error.message
+        // Crea la notifica
+        await Notification.create({
+          user: user._id,
+          team: teamId,
+          match: match._id,
+          type: 'match_scheduled',
+          message,
+          status: 'pending'
         });
       }
     }
-    
-    res.status(200).json({
-      message: `Sincronizzazione di tutte le categorie completata. ${results.teamsImported.length} squadre importate, ${results.matchesImported.length} partite importate, ${results.syncedToSheets.length} sincronizzazioni, ${results.errors.length} errori.`,
-      results
-    });
-    
   } catch (error) {
-    logger.error(`Error in syncAllCategories: ${error.message}`);
-    res.status(500).json({ message: error.message });
+    logger.error(`Error sending match notifications: ${error.message}`);
   }
 };

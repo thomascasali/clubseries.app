@@ -25,7 +25,7 @@ const readSheet = async (spreadsheetId, range) => {
       range,
     });
 
-    return response.data.values;
+    return response.data.values || [];
   } catch (error) {
     logger.error(`Error reading Google Sheet: ${error.message}`);
     throw error;
@@ -58,6 +58,252 @@ const writeSheet = async (spreadsheetId, range, values) => {
 };
 
 /**
+ * Legge le squadre dal foglio "Entry List"
+ * @param {string} spreadsheetId - ID del foglio Google Sheets
+ * @returns {Promise<Array>} - Lista delle squadre
+ */
+const readTeamsFromSheet = async (spreadsheetId) => {
+  try {
+    // Ottieni informazioni sul foglio
+    const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    
+    // Cerca il foglio "Entry List"
+    const entryListSheet = sheetInfo.data.sheets.find(sheet => 
+      sheet.properties.title.toLowerCase().includes('entry list')
+    );
+    
+    if (!entryListSheet) {
+      logger.warn(`No 'Entry List' sheet found in spreadsheet ${spreadsheetId}`);
+      return [];
+    }
+    
+    // Leggi i dati delle squadre dal range B4:B15
+    const teamsData = await readSheet(
+      spreadsheetId, 
+      `'${entryListSheet.properties.title}'!B4:B15`
+    );
+    
+    // Filtra i valori vuoti e crea oggetti squadra
+    const teams = teamsData
+      .filter(row => row[0] && row[0].trim() !== '')
+      .map(row => ({
+        name: row[0].trim()
+      }));
+    
+    return teams;
+  } catch (error) {
+    logger.error(`Error reading teams from Google Sheet: ${error.message}`);
+    throw error;
+  }
+};
+
+/**
+ * Legge le partite dai fogli "Pool" e "Draw Schedule"
+ * @param {string} spreadsheetId - ID del foglio Google Sheets
+ * @param {string} category - Categoria del campionato
+ * @returns {Promise<Array>} - Lista delle partite
+ */
+const readMatchesFromSheet = async (spreadsheetId, category) => {
+  try {
+    // Ottieni informazioni sul foglio
+    const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    
+    const matches = [];
+    
+    // Leggi le partite dai fogli Pool A, B, C, D
+    const poolSheets = sheetInfo.data.sheets.filter(sheet => 
+      sheet.properties.title.toLowerCase().includes('pool')
+    );
+    
+    for (const poolSheet of poolSheets) {
+      const poolName = poolSheet.properties.title.trim();
+      
+      // Leggi i dati delle partite dal pool
+      const poolData = await readSheet(
+        spreadsheetId, 
+        `'${poolName}'!A1:G30`
+      );
+      
+      // Processa i dati delle partite
+      for (let i = 0; i < poolData.length; i++) {
+        const row = poolData[i];
+        if (row.length < 5) continue;
+        
+        // Verifica se la riga contiene un orario (formato HH:MM)
+        const timeRegex = /^\d{1,2}:\d{2}$/;
+        if (row[2] && timeRegex.test(row[2])) {
+          // Estrai i dati della partita
+          const matchId = `${category}_${poolName}_${i}`;
+          const date = row[1] ? parseDate(row[1]) : null;
+          const time = row[2];
+          const court = row[3];
+          const matchInfo = row[4] ? row[4].split(' - ') : [];
+          
+          if (matchInfo.length === 2) {
+            const teamA = matchInfo[0].trim();
+            const teamB = matchInfo[1].trim();
+            
+            // Se ci sono già risultati inseriti
+            let scoreA = [];
+            let scoreB = [];
+            let result = 'pending';
+            
+            if (row.length > 5 && row[5]) {
+              // Assume formato "21-18, 21-15" per i risultati
+              const scores = row[5].split(',').map(s => s.trim());
+              
+              scores.forEach(score => {
+                const [sA, sB] = score.split('-').map(s => s.trim());
+                if (sA && sB) {
+                  scoreA.push(sA);
+                  scoreB.push(sB);
+                }
+              });
+              
+              // Determina il risultato
+              if (scoreA.length > 0 && scoreB.length > 0) {
+                let setsA = 0;
+                let setsB = 0;
+                
+                for (let j = 0; j < scoreA.length; j++) {
+                  if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
+                    setsA++;
+                  } else {
+                    setsB++;
+                  }
+                }
+                
+                if (setsA > setsB) {
+                  result = 'teamA';
+                } else if (setsB > setsA) {
+                  result = 'teamB';
+                } else {
+                  result = 'draw';
+                }
+              }
+            }
+            
+            matches.push({
+              matchId,
+              phase: poolName,
+              date,
+              time,
+              court,
+              teamA,
+              teamB,
+              scoreA,
+              scoreB,
+              result,
+              category,
+              spreadsheetRow: i + 1,
+              sheetName: poolName
+            });
+          }
+        }
+      }
+    }
+    
+    // Leggi le partite dal foglio "Draw Schedule" (tabellone eliminazione diretta)
+    const drawSheet = sheetInfo.data.sheets.find(sheet => 
+      sheet.properties.title.toLowerCase().includes('draw schedule')
+    );
+    
+    if (drawSheet) {
+      const drawName = drawSheet.properties.title.trim();
+      
+      // Leggi i dati delle partite dal tabellone
+      const drawData = await readSheet(
+        spreadsheetId, 
+        `'${drawName}'!A1:G50`
+      );
+      
+      // Processa i dati delle partite
+      for (let i = 0; i < drawData.length; i++) {
+        const row = drawData[i];
+        if (row.length < 5) continue;
+        
+        // Verifica se la riga contiene un orario (formato HH:MM)
+        const timeRegex = /^\d{1,2}:\d{2}$/;
+        if (row[2] && timeRegex.test(row[2])) {
+          // Estrai i dati della partita
+          const matchId = `${category}_${drawName}_${i}`;
+          const date = row[1] ? parseDate(row[1]) : null;
+          const time = row[2];
+          const court = row[3];
+          const matchInfo = row[4] ? row[4].split(' - ') : [];
+          
+          if (matchInfo.length === 2) {
+            const teamA = matchInfo[0].trim();
+            const teamB = matchInfo[1].trim();
+            
+            // Se ci sono già risultati inseriti
+            let scoreA = [];
+            let scoreB = [];
+            let result = 'pending';
+            
+            if (row.length > 5 && row[5]) {
+              // Assume formato "21-18, 21-15" per i risultati
+              const scores = row[5].split(',').map(s => s.trim());
+              
+              scores.forEach(score => {
+                const [sA, sB] = score.split('-').map(s => s.trim());
+                if (sA && sB) {
+                  scoreA.push(sA);
+                  scoreB.push(sB);
+                }
+              });
+              
+              // Determina il risultato
+              if (scoreA.length > 0 && scoreB.length > 0) {
+                let setsA = 0;
+                let setsB = 0;
+                
+                for (let j = 0; j < scoreA.length; j++) {
+                  if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
+                    setsA++;
+                  } else {
+                    setsB++;
+                  }
+                }
+                
+                if (setsA > setsB) {
+                  result = 'teamA';
+                } else if (setsB > setsA) {
+                  result = 'teamB';
+                } else {
+                  result = 'draw';
+                }
+              }
+            }
+            
+            matches.push({
+              matchId,
+              phase: 'Playoffs',
+              date,
+              time,
+              court,
+              teamA,
+              teamB,
+              scoreA,
+              scoreB,
+              result,
+              category,
+              spreadsheetRow: i + 1,
+              sheetName: drawName
+            });
+          }
+        }
+      }
+    }
+    
+    return matches;
+  } catch (error) {
+    logger.error(`Error reading matches from Google Sheet: ${error.message}`);
+    throw error;
+  }
+};
+
+/**
  * Sincronizza i dati delle partite dal database al foglio Google
  * @param {string} spreadsheetId - ID del foglio Google Sheets
  * @param {string} category - Categoria (usata per filtrare le partite)
@@ -65,53 +311,63 @@ const writeSheet = async (spreadsheetId, range, values) => {
  */
 const syncMatchesToSheet = async (spreadsheetId, category, matches) => {
   try {
-    // Prima leggiamo la struttura del foglio per capire dove dobbiamo scrivere
-    const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetName = sheetInfo.data.sheets[0].properties.title; // Prendi il primo foglio o implementa la logica per selezionare il foglio corretto
-    
     // Per ogni partita, aggiorniamo la riga corrispondente nel foglio
     for (const match of matches) {
-      if (!match.spreadsheetRow) {
-        logger.warn(`Match ${match._id} doesn't have a spreadsheet row number`);
+      if (!match.spreadsheetRow || !match.sheetName) {
+        logger.warn(`Match ${match._id} doesn't have a spreadsheet row number or sheet name`);
         continue;
       }
       
       // Determina il range per questa partita
-      const range = `${sheetName}!A${match.spreadsheetRow}:Z${match.spreadsheetRow}`;
+      const range = `'${match.sheetName}'!A${match.spreadsheetRow}:G${match.spreadsheetRow}`;
       
       // Leggi i dati attuali per questa riga
       const currentData = await readSheet(spreadsheetId, range);
       
-      // Preparazione dei dati da scrivere
-      // Nota: Questo è un esempio, devi adattarlo alla struttura del tuo foglio
-      const newRowData = [
-        match.matchId,
-        match.phase,
-        new Date(match.date).toLocaleDateString('it-IT'),
-        match.time,
-        match.court,
-        match.teamA.name, // Assumendo che teamA sia popolato con l'oggetto team
-        match.teamB.name, // Assumendo che teamB sia popolato con l'oggetto team
-      ];
+      if (!currentData || currentData.length === 0) {
+        logger.warn(`No current data found for match ${match._id} at ${range}`);
+        continue;
+      }
       
-      // Aggiungi i risultati se disponibili
+      // Crea una copia della riga corrente
+      const newRowData = [...currentData[0]];
+      
+      // Aggiorna i risultati se disponibili
       if (match.scoreA.length > 0 && match.scoreB.length > 0) {
-        match.scoreA.forEach((score, index) => {
-          newRowData.push(`${score}-${match.scoreB[index]}`);
-        });
+        // Formato risultati: "21-18, 21-15"
+        const resultStr = match.scoreA.map((score, idx) => 
+          `${score}-${match.scoreB[idx]}`
+        ).join(', ');
         
-        // Aggiungi lo stato della conferma
-        newRowData.push(
-          match.confirmedByTeamA && match.confirmedByTeamB 
-            ? 'Confermato' 
-            : 'In attesa di conferma'
-        );
+        // Aggiorna la colonna dei risultati (colonna F, indice 5)
+        if (newRowData.length > 5) {
+          newRowData[5] = resultStr;
+        } else {
+          // Estendi l'array se necessario
+          while (newRowData.length < 5) {
+            newRowData.push('');
+          }
+          newRowData.push(resultStr);
+        }
+        
+        // Aggiungi lo stato di conferma se necessario
+        if (match.confirmedByTeamA && match.confirmedByTeamB) {
+          if (newRowData.length > 6) {
+            newRowData[6] = 'Confermato';
+          } else {
+            newRowData.push('Confermato');
+          }
+        } else if (newRowData.length > 6) {
+          newRowData[6] = 'In attesa di conferma';
+        } else {
+          newRowData.push('In attesa di conferma');
+        }
       }
       
       // Scrivi i dati nel foglio
       await writeSheet(spreadsheetId, range, [newRowData]);
       
-      logger.info(`Updated match ${match._id} in spreadsheet row ${match.spreadsheetRow}`);
+      logger.info(`Updated match ${match._id} in spreadsheet at ${range}`);
     }
     
     // Aggiorna il tracking
@@ -124,28 +380,77 @@ const syncMatchesToSheet = async (spreadsheetId, category, matches) => {
 };
 
 /**
- * Legge le partite dal foglio Google e le sincronizza con il database
+ * Sincronizza i team dal foglio Google al database
  * @param {string} spreadsheetId - ID del foglio Google Sheets
- * @param {string} category - Categoria (usata per filtrare le partite)
+ * @param {string} category - Categoria del campionato
+ * @param {Object} Team - Modello Mongoose per i team
+ * @returns {Promise<Array>} - Lista dei team sincronizzati
+ */
+const syncTeamsFromSheet = async (spreadsheetId, category, Team) => {
+  try {
+    const teamsFromSheet = await readTeamsFromSheet(spreadsheetId);
+    
+    if (teamsFromSheet.length === 0) {
+      logger.info(`No teams found in spreadsheet for category ${category}`);
+      return [];
+    }
+    
+    const syncedTeams = [];
+    
+    // Per ogni squadra nel foglio, crea o aggiorna nel database
+    for (const teamData of teamsFromSheet) {
+      // Cerca la squadra nel database
+      let team = await Team.findOne({ 
+        name: teamData.name, 
+        category 
+      });
+      
+      if (!team) {
+        // Crea una nuova squadra con password temporanea
+        const tempPassword = Math.random().toString(36).substring(2, 10);
+        
+        team = await Team.create({
+          name: teamData.name,
+          category,
+          spreadsheetId,
+          password: tempPassword, // La password verrà hashata automaticamente dal middleware
+          players: []
+        });
+        
+        logger.info(`Created new team ${team.name} for category ${category}`);
+      } else {
+        logger.info(`Found existing team ${team.name} for category ${category}`);
+      }
+      
+      syncedTeams.push(team);
+    }
+    
+    return syncedTeams;
+  } catch (error) {
+    logger.error(`Error syncing teams from Google Sheet: ${error.message}`);
+    throw error;
+  }
+};
+
+/**
+ * Sincronizza le partite dal foglio Google al database
+ * @param {string} spreadsheetId - ID del foglio Google Sheets
+ * @param {string} category - Categoria del campionato
  * @param {Object} Match - Modello Mongoose per le partite
- * @param {Object} Team - Modello Mongoose per le squadre
+ * @param {Object} Team - Modello Mongoose per i team
+ * @returns {Promise<Array>} - Lista delle partite sincronizzate
  */
 const syncMatchesFromSheet = async (spreadsheetId, category, Match, Team) => {
   try {
-    // Ottieni informazioni sul foglio
-    const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetName = sheetInfo.data.sheets[0].properties.title;
+    const matchesFromSheet = await readMatchesFromSheet(spreadsheetId, category);
     
-    // Leggi tutti i dati dal foglio (esclusa la riga di intestazione)
-    const data = await readSheet(spreadsheetId, `${sheetName}!A2:Z`);
-    
-    if (!data || data.length === 0) {
-      logger.info(`No data found in sheet for category ${category}`);
+    if (matchesFromSheet.length === 0) {
+      logger.info(`No matches found in spreadsheet for category ${category}`);
       return [];
     }
     
     // Calcola l'hash dei dati delle partite per controllo modifiche
-    const dataHash = crypto.createHash('md5').update(JSON.stringify(data)).digest('hex');
+    const dataHash = crypto.createHash('md5').update(JSON.stringify(matchesFromSheet)).digest('hex');
     
     // Verifica se ci sono state modifiche rispetto all'ultima sincronizzazione
     const tracking = await SheetTracking.findOne({ 
@@ -158,128 +463,70 @@ const syncMatchesFromSheet = async (spreadsheetId, category, Match, Team) => {
       return [];
     }
     
-    // Array per tenere traccia delle partite create/aggiornate
-    const updatedMatches = [];
+    const syncedMatches = [];
     
-    // Processa ogni riga del foglio
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
-      const rowNumber = i + 2; // +2 perché la riga 1 è l'intestazione
-      
-      // Verifica se ci sono abbastanza dati nella riga
-      if (row.length < 7) continue;
-      
-      // Estrai i dati della partita
-      // Nota: Questo va adattato alla struttura effettiva del tuo foglio
-      const matchId = row[0];
-      const phase = row[1];
-      const dateStr = row[2];
-      const time = row[3];
-      const court = row[4];
-      const teamAName = row[5];
-      const teamBName = row[6];
-      
+    // Per ogni partita nel foglio, crea o aggiorna nel database
+    for (const matchData of matchesFromSheet) {
       // Cerca le squadre nel database
-      const teamA = await Team.findOne({ name: teamAName, category });
-      const teamB = await Team.findOne({ name: teamBName, category });
+      const teamA = await Team.findOne({ name: matchData.teamA, category });
+      const teamB = await Team.findOne({ name: matchData.teamB, category });
       
       if (!teamA || !teamB) {
-        logger.warn(`Teams not found for match ${matchId}: ${teamAName} or ${teamBName}`);
+        logger.warn(`Teams not found for match ${matchData.matchId}: ${matchData.teamA} or ${matchData.teamB}`);
         continue;
       }
       
-      // Converti la data
-      const dateParts = dateStr.split('/');
-      const date = new Date(
-        parseInt(dateParts[2]), // Anno
-        parseInt(dateParts[1]) - 1, // Mese (0-11)
-        parseInt(dateParts[0]) // Giorno
-      );
-      
       // Cerca se la partita esiste già
-      let match = await Match.findOne({ matchId });
+      let match = await Match.findOne({ matchId: matchData.matchId });
       
       if (match) {
         // Aggiorna la partita esistente
-        match.phase = phase;
-        match.date = date;
-        match.time = time;
-        match.court = court;
+        match.phase = matchData.phase;
+        match.date = matchData.date;
+        match.time = matchData.time;
+        match.court = matchData.court;
         match.teamA = teamA._id;
         match.teamB = teamB._id;
-        match.spreadsheetRow = rowNumber;
+        match.spreadsheetRow = matchData.spreadsheetRow;
+        match.sheetName = matchData.sheetName;
         
-        // Processa i risultati se presenti
-        if (row.length > 7) {
-          // Esempio: "25-20" => scoreA[i] = "25", scoreB[i] = "20"
-          const scores = row.slice(7).filter(s => s && s.includes('-'));
-          
-          if (scores.length > 0) {
-            match.scoreA = [];
-            match.scoreB = [];
-            
-            scores.forEach(score => {
-              const [scoreA, scoreB] = score.split('-');
-              match.scoreA.push(scoreA.trim());
-              match.scoreB.push(scoreB.trim());
-            });
-            
-            // Determina il risultato
-            let setsA = 0;
-            let setsB = 0;
-            for (let j = 0; j < match.scoreA.length; j++) {
-              if (parseInt(match.scoreA[j]) > parseInt(match.scoreB[j])) {
-                setsA++;
-              } else {
-                setsB++;
-              }
-            }
-            
-            if (setsA > setsB) {
-              match.result = 'teamA';
-            } else if (setsB > setsA) {
-              match.result = 'teamB';
-            } else {
-              match.result = 'draw';
-            }
-            
-            // Verifica se il risultato è confermato
-            const confirmationStatus = row[7 + scores.length];
-            if (confirmationStatus && confirmationStatus.toLowerCase().includes('conferm')) {
-              match.confirmedByTeamA = true;
-              match.confirmedByTeamB = true;
-            }
-          }
+        // Aggiorna i risultati solo se non sono già stati confermati
+        if (!match.confirmedByTeamA || !match.confirmedByTeamB) {
+          match.scoreA = matchData.scoreA;
+          match.scoreB = matchData.scoreB;
+          match.result = matchData.result;
         }
         
         await match.save();
-        logger.info(`Updated match ${matchId} from spreadsheet`);
+        logger.info(`Updated match ${matchData.matchId} from spreadsheet`);
       } else {
         // Crea una nuova partita
         match = await Match.create({
-          matchId,
-          phase,
-          date,
-          time,
-          court,
+          matchId: matchData.matchId,
+          phase: matchData.phase,
+          date: matchData.date,
+          time: matchData.time,
+          court: matchData.court,
           teamA: teamA._id,
           teamB: teamB._id,
           category,
-          spreadsheetRow: rowNumber,
-          result: 'pending'
+          spreadsheetRow: matchData.spreadsheetRow,
+          sheetName: matchData.sheetName,
+          scoreA: matchData.scoreA,
+          scoreB: matchData.scoreB,
+          result: matchData.result
         });
         
-        logger.info(`Created new match ${matchId} from spreadsheet`);
+        logger.info(`Created new match ${matchData.matchId} from spreadsheet`);
       }
       
-      updatedMatches.push(match);
+      syncedMatches.push(match);
     }
     
     // Aggiorna il tracking
     await updateSheetTracking(spreadsheetId, category, dataHash);
     
-    return updatedMatches;
-    
+    return syncedMatches;
   } catch (error) {
     logger.error(`Error syncing matches from Google Sheet: ${error.message}`);
     throw error;
@@ -357,43 +604,15 @@ const testSheetConnection = async (spreadsheetId) => {
     const sheetInfo = await getSheetInfo(spreadsheetId);
     
     // Leggi squadre dal foglio "entry list"
-    const entryListSheet = sheetInfo.sheets.find(sheet => 
-      sheet.title.toLowerCase().includes('entry list'));
+    const teams = await readTeamsFromSheet(spreadsheetId);
     
-    let teamsList = [];
-    if (entryListSheet) {
-      const teamsResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `'${entryListSheet.title}'!B4:B15`,
-      });
-      
-      if (teamsResponse.data.values) {
-        teamsList = teamsResponse.data.values
-          .filter(row => row[0] && row[0].trim() !== '')
-          .map(row => row[0]);
-      }
-    }
-    
-    // Leggi un campione dei dati del primo Pool
-    const poolSheet = sheetInfo.sheets.find(sheet => 
-      sheet.title.toLowerCase().includes('pool'));
-    
-    let matchesSample = [];
-    if (poolSheet) {
-      const matchesResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `'${poolSheet.title}'!A1:G10`,
-      });
-      
-      if (matchesResponse.data.values) {
-        matchesSample = matchesResponse.data.values;
-      }
-    }
+    // Leggi le partite dai vari fogli
+    const matches = await readMatchesFromSheet(spreadsheetId, "Under 21 M");
     
     return {
       sheetInfo,
-      teamsList,
-      matchesSample
+      teams,
+      matches: matches.slice(0, 5) // Restituisci solo le prime 5 partite per brevità
     };
   } catch (error) {
     logger.error(`Error testing Google Sheet connection: ${error.message}`);
@@ -401,9 +620,33 @@ const testSheetConnection = async (spreadsheetId) => {
   }
 };
 
+/**
+ * Helper per parsare le date in formato italiano
+ * @param {string} dateStr - Data in formato italiano (DD/MM/YYYY)
+ * @returns {Date} - Oggetto Date
+ */
+const parseDate = (dateStr) => {
+  // Verifica se la data è nel formato italiano (gg/mm/aaaa)
+  const italianDateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = dateStr.match(italianDateRegex);
+  
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1; // I mesi in JS partono da 0
+    const year = parseInt(match[3], 10);
+    return new Date(year, month, day);
+  }
+  
+  // Altrimenti prova a parsarla come data standard
+  return new Date(dateStr);
+};
+
 module.exports = {
   readSheet,
   writeSheet,
+  readTeamsFromSheet,
+  readMatchesFromSheet,
+  syncTeamsFromSheet,
   syncMatchesToSheet,
   syncMatchesFromSheet,
   updateSheetTracking,

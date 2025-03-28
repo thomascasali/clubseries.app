@@ -4,37 +4,45 @@
 │   ├── Dockerfile
 │   ├── .env
 │   ├── error.log
+│   ├── google-service-account.json
 │   ├── package.json
 │   ├── package-lock.json
-│   └── src
-│       ├── app.js
-│       ├── config
-│       │   ├── database.js
-│       │   └── logger.js
-│       ├── {config,controllers,middleware,models,routes,services
-│       │   └── {google,notifications},utils}
-│       ├── controllers
-│       │   ├── authController.js
-│       │   ├── matchController.js
-│       │   ├── notificationController.js
-│       │   ├── teamController.js
-│       │   └── userController.js
-│       ├── middleware
-│       │   └── auth.js
-│       ├── models
-│       │   ├── Match.js
-│       │   ├── Notification.js
-│       │   ├── SheetTracking.js
-│       │   ├── Team.js
-│       │   └── User.js
-│       ├── routes
-│       │   ├── auth.js
-│       │   ├── matches.js
-│       │   ├── notifications.js
-│       │   ├── teams.js
-│       │   └── users.js
-│       └── services
-│           └── notificationService.js
+│   ├── src
+│   │   ├── app.js
+│   │   ├── config
+│   │   │   ├── database.js
+│   │   │   └── logger.js
+│   │   ├── {config,controllers,middleware,models,routes,services
+│   │   │   └── {google,notifications},utils}
+│   │   ├── controllers
+│   │   │   ├── authController.js
+│   │   │   ├── googleSheetsController.js
+│   │   │   ├── matchController.js
+│   │   │   ├── notificationController.js
+│   │   │   ├── teamController.js
+│   │   │   └── userController.js
+│   │   ├── middleware
+│   │   │   └── auth.js
+│   │   ├── models
+│   │   │   ├── Match.js
+│   │   │   ├── Notification.js
+│   │   │   ├── SheetTracking.js
+│   │   │   ├── Team.js
+│   │   │   └── User.js
+│   │   ├── routes
+│   │   │   ├── auth.js
+│   │   │   ├── googleSheets.js
+│   │   │   ├── matches.js
+│   │   │   ├── notifications.js
+│   │   │   ├── teams.js
+│   │   │   └── users.js
+│   │   ├── services
+│   │   │   ├── googleSheetsService.js
+│   │   │   ├── notificationService.js
+│   │   │   └── syncScheduler.js
+│   │   └── utils
+│   │       └── sheetsUtils.js
+│   └── test-sheets-connection.js
 ├── backup
 │   ├── app
 │   │   ├── index.js
@@ -103,4 +111,4 @@
 ├── .gitignore
 └── tree_clubseries.txt
 
-26 directories, 77 files
+27 directories, 84 files
