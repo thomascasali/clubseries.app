@@ -13,7 +13,7 @@ const matchRoutes = require('./routes/matches');
 const teamRoutes = require('./routes/teams');
 const notificationRoutes = require('./routes/notifications');
 const googleSheetsRoutes = require('./routes/googleSheets');
-const { startSyncScheduler } = require('./services/syncScheduler');
+const syncScheduler = require('./services/syncScheduler');
 
 // Inizializzazione app Express
 const app = express();
@@ -25,7 +25,13 @@ app.use(express.json());
 
 // Connessione al database
 connectDB();
-startSyncScheduler();
+
+if (process.env.NODE_ENV === 'production') {
+  syncScheduler.initSyncScheduler();
+  logger.info('Sync scheduler initialized');
+} else {
+  logger.info('Sync scheduler not initialized in development mode');
+}
 
 
 // Rotte base per test
@@ -39,7 +45,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/sheets', googleSheetsRoutes);
+app.use('/api/google-sheets', googleSheetsRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

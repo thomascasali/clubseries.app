@@ -98,6 +98,30 @@ const readTeamsFromSheet = async (spreadsheetId) => {
 };
 
 /**
+ * Cerca un nome di team all'interno di un testo più lungo
+ * @param {string} text - Testo completo (es. "ACTIVE BEACH VOLLEY DUE TORRI Team A")
+ * @param {Array} validTeamNames - Array di nomi di team validi
+ * @returns {string|null} - Nome del team trovato o null
+ */
+const findTeamInText = (text, validTeamNames) => {
+  // Rimuovi la parte "Team X" dal testo per trovare solo il nome della squadra
+  const baseText = text.replace(/\s+Team\s+[A-Z]/i, '').trim();
+  
+  // Cerca il team più lungo che è contenuto nel testo base
+  let foundTeam = null;
+  let maxLength = 0;
+  
+  for (const teamName of validTeamNames) {
+    if (baseText.includes(teamName) && teamName.length > maxLength) {
+      foundTeam = teamName;
+      maxLength = teamName.length;
+    }
+  }
+  
+  return foundTeam;
+};
+
+/**
  * Legge le partite dai fogli "Pool" e "Draw Schedule"
  * @param {string} spreadsheetId - ID del foglio Google Sheets
  * @param {string} category - Categoria del campionato
@@ -107,6 +131,10 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
   try {
     // Ottieni informazioni sul foglio
     const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId });
+    
+    // Leggi i team dal foglio per avere i nomi validi
+    const validTeams = await readTeamsFromSheet(spreadsheetId);
+    const validTeamNames = validTeams.map(team => team.name);
     
     const matches = [];
     
@@ -127,7 +155,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       // Processa i dati delle partite
       for (let i = 0; i < poolData.length; i++) {
         const row = poolData[i];
-        if (row.length < 5) continue;
+        if (row.length < 6) continue; // Deve avere almeno 6 colonne (fino a Results)
         
         // Verifica se la riga contiene un orario (formato HH:MM)
         const timeRegex = /^\d{1,2}:\d{2}$/;
@@ -137,73 +165,95 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
           const date = row[1] ? parseDate(row[1]) : null;
           const time = row[2];
           const court = row[3];
-          const matchInfo = row[4] ? row[4].split(' - ') : [];
           
-          if (matchInfo.length === 2) {
-            const teamA = matchInfo[0].trim();
-            const teamB = matchInfo[1].trim();
+          // Importante: leggiamo i nomi delle squadre dalla colonna F (Results), non dalla E (Teams)
+          const resultText = row[5] ? row[5].trim() : '';
+          
+          // Prova prima a dividere con " vs " (come nel foglio che hai condiviso)
+          let teamParts = resultText.split(' vs ');
+          
+          // Se non funziona, prova con " - " (formato alternativo)
+          if (teamParts.length !== 2) {
+            teamParts = resultText.split(' - ');
+          }
+          
+          // Cerca le squadre reali nel testo completo
+          if (teamParts.length === 2) {
+            // Nel foglio, il formato è "SQUADRA1 Team X vs SQUADRA2 Team Y"
+            // Dobbiamo estrarre i nomi completi delle squadre
+            const fullTeamA = teamParts[0].trim();
+            const fullTeamB = teamParts[1].trim();
             
-            // Se ci sono già risultati inseriti
-            let scoreA = [];
-            let scoreB = [];
-            let result = 'pending';
+            // Controlla se i nomi completi contengono i nomi dei team
+            const foundTeamA = findTeamInText(fullTeamA, validTeamNames);
+            const foundTeamB = findTeamInText(fullTeamB, validTeamNames);
             
-            if (row.length > 5 && row[5]) {
-              // Assume formato "21-18, 21-15" per i risultati
-              const scores = row[5].split(',').map(s => s.trim());
+            if (foundTeamA && foundTeamB) {
+              // Se ci sono già risultati inseriti
+              let scoreA = [];
+              let scoreB = [];
+              let result = 'pending';
               
-              scores.forEach(score => {
-                const [sA, sB] = score.split('-').map(s => s.trim());
-                if (sA && sB) {
-                  scoreA.push(sA);
-                  scoreB.push(sB);
-                }
-              });
-              
-              // Determina il risultato
-              if (scoreA.length > 0 && scoreB.length > 0) {
-                let setsA = 0;
-                let setsB = 0;
+              // Risultati nella colonna G (indice 6)
+              if (row.length > 6 && row[6]) {
+                // Assume formato "21-18, 21-15" per i risultati
+                const scores = row[6].split(',').map(s => s.trim());
                 
-                for (let j = 0; j < scoreA.length; j++) {
-                  if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
-                    setsA++;
+                scores.forEach(score => {
+                  const [sA, sB] = score.split('-').map(s => s.trim());
+                  if (sA && sB) {
+                    scoreA.push(sA);
+                    scoreB.push(sB);
+                  }
+                });
+                
+                // Determina il risultato
+                if (scoreA.length > 0 && scoreB.length > 0) {
+                  let setsA = 0;
+                  let setsB = 0;
+                  
+                  for (let j = 0; j < scoreA.length; j++) {
+                    if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
+                      setsA++;
+                    } else {
+                      setsB++;
+                    }
+                  }
+                  
+                  if (setsA > setsB) {
+                    result = 'teamA';
+                  } else if (setsB > setsA) {
+                    result = 'teamB';
                   } else {
-                    setsB++;
+                    result = 'draw';
                   }
                 }
-                
-                if (setsA > setsB) {
-                  result = 'teamA';
-                } else if (setsB > setsA) {
-                  result = 'teamB';
-                } else {
-                  result = 'draw';
-                }
               }
+              
+              matches.push({
+                matchId,
+                phase: poolName,
+                date,
+                time,
+                court,
+                teamA: foundTeamA,
+                teamB: foundTeamB,
+                scoreA,
+                scoreB,
+                result,
+                category,
+                spreadsheetRow: i + 1,
+                sheetName: poolName
+              });
+            } else {
+              logger.debug(`Skipping match with placeholder teams: ${poolName} vs ${resultText}`);
             }
-            
-            matches.push({
-              matchId,
-              phase: poolName,
-              date,
-              time,
-              court,
-              teamA,
-              teamB,
-              scoreA,
-              scoreB,
-              result,
-              category,
-              spreadsheetRow: i + 1,
-              sheetName: poolName
-            });
           }
         }
       }
     }
     
-    // Leggi le partite dal foglio "Draw Schedule" (tabellone eliminazione diretta)
+    // Per il Draw Schedule, facciamo lo stesso ma consideriamo che molte partite avranno solo segnaposto
     const drawSheet = sheetInfo.data.sheets.find(sheet => 
       sheet.properties.title.toLowerCase().includes('draw schedule')
     );
@@ -220,7 +270,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       // Processa i dati delle partite
       for (let i = 0; i < drawData.length; i++) {
         const row = drawData[i];
-        if (row.length < 5) continue;
+        if (row.length < 6) continue; // Deve avere almeno 6 colonne (fino a Results)
         
         // Verifica se la riga contiene un orario (formato HH:MM)
         const timeRegex = /^\d{1,2}:\d{2}$/;
@@ -230,70 +280,102 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
           const date = row[1] ? parseDate(row[1]) : null;
           const time = row[2];
           const court = row[3];
-          const matchInfo = row[4] ? row[4].split(' - ') : [];
           
-          if (matchInfo.length === 2) {
-            const teamA = matchInfo[0].trim();
-            const teamB = matchInfo[1].trim();
+          // Importante: leggiamo i nomi delle squadre dalla colonna F (Results), non dalla E (Teams)
+          const resultText = row[5] ? row[5].trim() : '';
+          
+          // Prova prima a dividere con " vs " (come nel foglio che hai condiviso)
+          let teamParts = resultText.split(' vs ');
+          
+          // Se non funziona, prova con " - " (formato alternativo)
+          if (teamParts.length !== 2) {
+            teamParts = resultText.split(' - ');
+          }
+          
+          // Cerca le squadre reali nel testo completo
+          if (teamParts.length === 2) {
+            // Nel foglio, il formato è "SQUADRA1 Team X vs SQUADRA2 Team Y"
+            // Dobbiamo estrarre i nomi completi delle squadre
+            const fullTeamA = teamParts[0].trim();
+            const fullTeamB = teamParts[1].trim();
             
-            // Se ci sono già risultati inseriti
-            let scoreA = [];
-            let scoreB = [];
-            let result = 'pending';
+            // Controlla se i nomi completi contengono i nomi dei team
+            const foundTeamA = findTeamInText(fullTeamA, validTeamNames);
+            const foundTeamB = findTeamInText(fullTeamB, validTeamNames);
             
-            if (row.length > 5 && row[5]) {
-              // Assume formato "21-18, 21-15" per i risultati
-              const scores = row[5].split(',').map(s => s.trim());
+            if (foundTeamA && foundTeamB) {
+              // Se ci sono già risultati inseriti
+              let scoreA = [];
+              let scoreB = [];
+              let result = 'pending';
               
-              scores.forEach(score => {
-                const [sA, sB] = score.split('-').map(s => s.trim());
-                if (sA && sB) {
-                  scoreA.push(sA);
-                  scoreB.push(sB);
-                }
-              });
-              
-              // Determina il risultato
-              if (scoreA.length > 0 && scoreB.length > 0) {
-                let setsA = 0;
-                let setsB = 0;
+              // Risultati nella colonna G (indice 6)
+              if (row.length > 6 && row[6]) {
+                // Assume formato "21-18, 21-15" per i risultati
+                const scores = row[6].split(',').map(s => s.trim());
                 
-                for (let j = 0; j < scoreA.length; j++) {
-                  if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
-                    setsA++;
+                scores.forEach(score => {
+                  const [sA, sB] = score.split('-').map(s => s.trim());
+                  if (sA && sB) {
+                    scoreA.push(sA);
+                    scoreB.push(sB);
+                  }
+                });
+                
+                // Determina il risultato
+                if (scoreA.length > 0 && scoreB.length > 0) {
+                  let setsA = 0;
+                  let setsB = 0;
+                  
+                  for (let j = 0; j < scoreA.length; j++) {
+                    if (parseInt(scoreA[j]) > parseInt(scoreB[j])) {
+                      setsA++;
+                    } else {
+                      setsB++;
+                    }
+                  }
+                  
+                  if (setsA > setsB) {
+                    result = 'teamA';
+                  } else if (setsB > setsA) {
+                    result = 'teamB';
                   } else {
-                    setsB++;
+                    result = 'draw';
                   }
                 }
-                
-                if (setsA > setsB) {
-                  result = 'teamA';
-                } else if (setsB > setsA) {
-                  result = 'teamB';
-                } else {
-                  result = 'draw';
-                }
               }
+              
+              matches.push({
+                matchId,
+                phase: 'Playoffs',
+                date,
+                time,
+                court,
+                teamA: foundTeamA,
+                teamB: foundTeamB,
+                scoreA,
+                scoreB,
+                result,
+                category,
+                spreadsheetRow: i + 1,
+                sheetName: drawName
+              });
+            } else {
+              logger.debug(`Skipping draw match with placeholder teams: ${resultText}`);
             }
-            
-            matches.push({
-              matchId,
-              phase: 'Playoffs',
-              date,
-              time,
-              court,
-              teamA,
-              teamB,
-              scoreA,
-              scoreB,
-              result,
-              category,
-              spreadsheetRow: i + 1,
-              sheetName: drawName
-            });
           }
         }
       }
+    }
+    
+    // Stampa le partite trovate per debug
+    if (matches.length > 0) {
+      logger.info(`Found ${matches.length} valid matches in spreadsheet for category ${category}`);
+      matches.forEach((match, idx) => {
+        logger.debug(`Match ${idx+1}: ${match.teamA} vs ${match.teamB}, Date: ${match.date}, Time: ${match.time}`);
+      });
+    } else {
+      logger.info(`No valid matches found in spreadsheet for category ${category}`);
     }
     
     return matches;
@@ -339,26 +421,26 @@ const syncMatchesToSheet = async (spreadsheetId, category, matches) => {
           `${score}-${match.scoreB[idx]}`
         ).join(', ');
         
-        // Aggiorna la colonna dei risultati (colonna F, indice 5)
-        if (newRowData.length > 5) {
-          newRowData[5] = resultStr;
+        // Aggiorna la colonna dei risultati (colonna G, indice 6)
+        if (newRowData.length > 6) {
+          newRowData[6] = resultStr;
         } else {
           // Estendi l'array se necessario
-          while (newRowData.length < 5) {
+          while (newRowData.length < 6) {
             newRowData.push('');
           }
           newRowData.push(resultStr);
         }
         
-        // Aggiungi lo stato di conferma se necessario
+        // Aggiungi lo stato di conferma se necessario (potrebbero essere necessarie altre colonne)
         if (match.confirmedByTeamA && match.confirmedByTeamB) {
-          if (newRowData.length > 6) {
-            newRowData[6] = 'Confermato';
+          if (newRowData.length > 7) {
+            newRowData[7] = 'Confermato';
           } else {
             newRowData.push('Confermato');
           }
-        } else if (newRowData.length > 6) {
-          newRowData[6] = 'In attesa di conferma';
+        } else if (newRowData.length > 7) {
+          newRowData[7] = 'In attesa di conferma';
         } else {
           newRowData.push('In attesa di conferma');
         }
