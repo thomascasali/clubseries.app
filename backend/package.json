@@ -1,0 +1,36 @@
+{
+  "name": "aibvc-club-series-backend",
+  "version": "1.0.0",
+  "description": "Backend per la gestione delle AIBVC Club Series Finals",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "beach",
+    "volley",
+    "aibvc",
+    "notifications"
+  ],
+  "author": "AIBVC",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "firebase-admin": "^13.2.0",
+    "googleapis": "^126.0.1",
+    "helmet": "^7.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.5.3",
+    "node-cron": "^3.0.2",
+    "winston": "^3.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

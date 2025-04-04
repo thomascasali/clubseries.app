@@ -1,0 +1,145 @@
+.
+├── backend
+│   ├── combined.log
+│   ├── Dockerfile
+│   ├── .env
+│   ├── error.log
+│   ├── google-service-account.json
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── reset-db-and-sync-all.js
+│   ├── reset-sync-category.js
+│   ├── src
+│   │   ├── app.js
+│   │   ├── config
+│   │   │   ├── clubseriesfinals-firebase-adminsdk.json
+│   │   │   ├── database.js
+│   │   │   └── logger.js
+│   │   ├── {config,controllers,middleware,models,routes,services
+│   │   │   └── {google,notifications},utils}
+│   │   ├── controllers
+│   │   │   ├── authController.js
+│   │   │   ├── googleSheetsController.js
+│   │   │   ├── matchController.js
+│   │   │   ├── notificationController.js
+│   │   │   ├── teamController.js
+│   │   │   └── userController.js
+│   │   ├── middleware
+│   │   │   └── auth.js
+│   │   ├── models
+│   │   │   ├── Match.js
+│   │   │   ├── Notification.js
+│   │   │   ├── SheetTracking.js
+│   │   │   ├── Team.js
+│   │   │   └── User.js
+│   │   ├── routes
+│   │   │   ├── auth.js
+│   │   │   ├── googleSheets.js
+│   │   │   ├── matches.js
+│   │   │   ├── notifications.js
+│   │   │   ├── teams.js
+│   │   │   └── users.js
+│   │   ├── services
+│   │   │   ├── fcmService.js
+│   │   │   ├── googleSheets
+│   │   │   │   ├── config.js
+│   │   │   │   ├── find-golden-sets.js
+│   │   │   │   ├── index.js
+│   │   │   │   ├── readers.js
+│   │   │   │   ├── syncers.js
+│   │   │   │   ├── tracking.js
+│   │   │   │   ├── utils.js
+│   │   │   │   └── writers.js
+│   │   │   ├── googleSheetsService.js
+│   │   │   ├── notificationService.js
+│   │   │   └── syncScheduler.js
+│   │   └── utils
+│   │       └── sheetsUtils.js
+│   ├── sync-all-categories.js
+│   ├── test-date-parsing.js
+│   ├── test-find-golden.js
+│   ├── test-force-sync.js
+│   ├── test-golden-sets.js
+│   ├── test-read-pools.js
+│   ├── test-sheets-connection.js
+│   ├── test-sheet-sync.js
+│   ├── test-sync-all.js
+│   └── test-sync-golden-sets.js
+├── docker-compose.temp.yml
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.temp
+├── frontend
+│   ├── Dockerfile
+│   ├── .env.development
+│   ├── .gitignore
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── public
+│   │   ├── aibvc.ico
+│   │   ├── aibvc.png
+│   │   ├── firebase-messaging-sw.js
+│   │   ├── index.html
+│   │   ├── manifest.json
+│   │   └── robots.txt
+│   ├── README.md
+│   └── src
+│       ├── aibvc.ico
+│       ├── aibvc.png
+│       ├── App.css
+│       ├── App.js
+│       ├── App.test.js
+│       ├── components
+│       │   ├── auth
+│       │   ├── common
+│       │   │   ├── AdminRoute.js
+│       │   │   ├── LoadingScreen.js
+│       │   │   └── PrivateRoute.js
+│       │   ├── dashboard
+│       │   │   ├── DebugPanel.js
+│       │   │   ├── MatchesSection.js
+│       │   │   ├── MatchGroupCard.js
+│       │   │   ├── MatchUtils.js
+│       │   │   ├── NotificationsSection.js
+│       │   │   ├── SignupPrompt.js
+│       │   │   └── TeamsSection.js
+│       │   ├── icons
+│       │   │   └── VolleyballIcon.js
+│       │   ├── layout
+│       │   │   └── MainLayout.js
+│       │   └── notifications
+│       │       └── NotificationToggle.js
+│       ├── context
+│       │   └── AuthContext.js
+│       ├── index.css
+│       ├── index.js
+│       ├── pages
+│       │   ├── auth
+│       │   │   ├── Login.js
+│       │   │   └── Register.js
+│       │   ├── Dashboard.js
+│       │   ├── match
+│       │   │   └── MatchDetails.js
+│       │   ├── Matches.js
+│       │   ├── notifications
+│       │   │   └── Notifications.js
+│       │   ├── Notifications.js
+│       │   ├── PrivacyPolicy.js
+│       │   ├── Subscriptions.js
+│       │   └── Teams.js
+│       ├── reportWebVitals.js
+│       ├── services
+│       │   ├── api.js
+│       │   ├── authService.js
+│       │   ├── firebaseService.js
+│       │   ├── matchService.js
+│       │   ├── notificationService.js
+│       │   ├── teamService.js
+│       │   └── userService.js
+│       ├── setupTests.js
+│       └── utils
+│           └── categoryUtils.js
+├── .gitignore
+└── tree_clubseries.txt
+
+29 directories, 113 files

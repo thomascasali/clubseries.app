@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  temp:
+    build:
+      context: .
+      dockerfile: Dockerfile.temp
+    container_name: temp_node
+    volumes:
+      - ./:/app

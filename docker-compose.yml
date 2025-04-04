@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Servizio MongoDB
+  mongodb:
+    image: mongo:6
+    container_name: aibvc-mongodb
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    networks:
+      - webnet
+
+  # Servizio Backend Node.js
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aibvc-backend
+    restart: always
+    depends_on:
+      - mongodb
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - webnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.clubseries.app`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=myresolver"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+
+  # Servizio Frontend React
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aibvc-frontend
+    restart: always
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - webnet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`clubseries.app`) || Host(`www.clubseries.app`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+
+networks:
+  webnet:
+    external: true
+
+volumes:
+  mongodb_data:
