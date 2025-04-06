@@ -26,8 +26,10 @@ const NotificationToggle = ({ style }) => {
     try {
       if (isSubscribed) {
         // Disattiva le notifiche
-        await unregisterToken();
-        setIsSubscribed(false);
+        const success = await unregisterToken();
+        if (success) {
+          setIsSubscribed(false);
+        }
       } else {
         // Attiva le notifiche
         const token = await requestNotificationPermission();

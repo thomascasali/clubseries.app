@@ -125,6 +125,18 @@ exports.subscribeToTeam = async (req, res) => {
       team.subscriptions.push(user._id);
       await team.save();
     }
+    
+    // Iscrivere i token FCM dell'utente al topic della squadra
+    if (user.fcmTokens && user.fcmTokens.length > 0) {
+      try {
+        const fcmService = require('../services/fcmService');
+        await fcmService.subscribeToTopic(user.fcmTokens, `team_${teamId}`);
+        logger.info(`User ${user._id} FCM tokens subscribed to team topic ${teamId}`);
+      } catch (fcmError) {
+        logger.error(`Error subscribing to FCM topic: ${fcmError.message}`);
+        // Non interrompiamo il flusso se l'iscrizione FCM fallisce
+      }
+    }
 
     res.status(200).json({ 
       message: 'Iscrizione alle notifiche effettuata con successo',
@@ -167,6 +179,18 @@ exports.unsubscribeFromTeam = async (req, res) => {
         id => id.toString() !== user._id.toString()
       );
       await team.save();
+    }
+    
+    // Disiscrivere i token FCM dell'utente dal topic della squadra
+    if (user.fcmTokens && user.fcmTokens.length > 0) {
+      try {
+        const fcmService = require('../services/fcmService');
+        await fcmService.unsubscribeFromTopic(user.fcmTokens, `team_${teamId}`);
+        logger.info(`User ${user._id} FCM tokens unsubscribed from team topic ${teamId}`);
+      } catch (fcmError) {
+        logger.error(`Error unsubscribing from FCM topic: ${fcmError.message}`);
+        // Non interrompiamo il flusso se la disiscrizione FCM fallisce
+      }
     }
 
     res.status(200).json({ message: 'Iscrizione rimossa con successo' });

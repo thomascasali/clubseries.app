@@ -13,6 +13,7 @@ const matchRoutes = require('./routes/matches');
 const teamRoutes = require('./routes/teams');
 const notificationRoutes = require('./routes/notifications');
 const googleSheetsRoutes = require('./routes/googleSheets');
+const fcmRoutes = require('./routes/fcm'); // Aggiunta questa riga
 const syncScheduler = require('./services/syncScheduler');
 const notificationService = require('./services/notificationService');
 
@@ -33,7 +34,7 @@ if (process.env.NODE_ENV === 'production') {
   syncScheduler.initSyncScheduler();
   logger.info('Sync scheduler initialized');
   
-  // Configura il job di elaborazione notifiche (ogni 5 minuti)
+  // Configura il job di elaborazione notifiche (ogni 3 minuti)
   cron.schedule('*/3 * * * *', async () => {
     try {
       logger.info('Running scheduled notification processing');
@@ -59,6 +60,7 @@ app.use('/api/matches', matchRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/google-sheets', googleSheetsRoutes);
+app.use('/api/fcm', fcmRoutes); // Aggiunta questa riga
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -19,12 +19,20 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage(function(payload) {
   console.log('Ricevuta notifica in background:', payload);
 
+  // Estrai informazioni dalla notifica
   const notificationTitle = payload.notification.title || 'Club Series';
+  const notificationBody = payload.notification.body || '';
+  
+  // Prepara le opzioni della notifica
   const notificationOptions = {
-    body: payload.notification.body || '',
-    icon: '/favicon.png'
+    body: notificationBody,
+    icon: '/favicon.png',
+    badge: '/favicon.png',
+    // Includi eventuali dati aggiuntivi dalla notifica
+    data: payload.data || {}
   };
 
+  // Mostra la notifica
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
@@ -34,8 +42,16 @@ self.addEventListener('notificationclick', function(event) {
   
   event.notification.close();
   
+  // Estrai i dati dalla notifica se presenti
+  const notificationData = event.notification.data || {};
+  
   // Url da aprire quando si clicca sulla notifica
   let url = '/notifications';
+  
+  // Se c'è un matchId, reindirizza alla pagina del match
+  if (notificationData.matchId) {
+    url = `/matches/${notificationData.matchId}`;
+  }
   
   // Assicurati che l'URL sia completo
   const urlToOpen = new URL(url, self.location.origin).href;

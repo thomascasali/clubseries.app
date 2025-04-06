@@ -33,8 +33,18 @@ if (messaging) {
   onMessage(messaging, (payload) => {
     console.log('Messaggio ricevuto in foreground:', payload);
     
+    // Mostra notifica browser se non c'è un handler personalizzato
     if (onMessageCallback) {
       onMessageCallback(payload);
+    } else {
+      // Handler di default - mostra una notifica browser
+      if (Notification.permission === 'granted' && payload.notification) {
+        const { title, body } = payload.notification;
+        new Notification(title, {
+          body,
+          icon: '/favicon.png'
+        });
+      }
     }
   });
 }
@@ -59,14 +69,31 @@ export const requestNotificationPermission = async () => {
       return null;
     }
     
+    // Controlla se il service worker è registrato
+    let serviceWorkerRegistration = null;
+    if ('serviceWorker' in navigator) {
+      try {
+        serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+        if (!serviceWorkerRegistration) {
+          console.log('Service worker non trovato, tentativo di registrazione...');
+          serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          console.log('Service worker registrato con successo');
+        }
+      } catch (swError) {
+        console.warn('Errore nella registrazione del service worker:', swError);
+        // Continua anche senza service worker (per notifiche in foreground)
+      }
+    }
+    
     try {
       // Ottieni token FCM
       const token = await getToken(messaging, {
-        vapidKey: 'BODRY8fDnAtp52kFmmY5zeYpaEB1eRuW1salcgoI8mQuAd_G24bxxGjCoKv6pMMVeVfRHX8COCZEC_RFBzwUYTg' // Usa la chiave che hai copiato
+        vapidKey: 'BODRY8fDnAtp52kFmmY5zeYpaEB1eRuW1salcgoI8mQuAd_G24bxxGjCoKv6pMMVeVfRHX8COCZEC_RFBzwUYTg',
+        serviceWorkerRegistration // Passa la registrazione se disponibile
       });
       
       if (token) {
-        console.log('Token FCM ottenuto:', token);
+        console.log('Token FCM ottenuto');
         
         // Registra il token sul server
         await registerTokenWithServer(token);
@@ -89,13 +116,15 @@ export const requestNotificationPermission = async () => {
     return null;
   }
 };
+
 /**
  * Registra un token FCM sul server
  * @param {string} token - Token FCM da registrare
  */
 export const registerTokenWithServer = async (token) => {
   try {
-    await api.post('/users/fcm-token', { token });
+    // Usa il nuovo endpoint FCM che abbiamo creato
+    await api.post('/api/fcm/register', { token });
     console.log('Token FCM registrato sul server');
     return true;
   } catch (error) {
@@ -118,13 +147,11 @@ export const unregisterToken = async () => {
     const currentToken = await getToken(messaging);
     
     if (currentToken) {
+      // Elimina il token dal server
+      await api.post('/api/fcm/unregister', { token: currentToken });
+      
       // Elimina il token da Firebase
       await deleteToken(messaging);
-      
-      // Elimina il token dal server
-      await api.delete('/api/users/fcm-token', { 
-        data: { token: currentToken } 
-      });
       
       console.log('Token FCM eliminato');
       return true;
@@ -144,9 +171,41 @@ export const setOnMessageHandler = (callback) => {
   onMessageCallback = callback;
 };
 
+/**
+ * Quando un utente si iscrive a una squadra, sottoscrive il token al topic
+ * @param {string} teamId - ID della squadra 
+ */
+export const subscribeToTeam = async (teamId) => {
+  try {
+    await api.post('/api/fcm/subscribe-team', { teamId });
+    console.log(`Iscritto alle notifiche per la squadra ${teamId}`);
+    return true;
+  } catch (error) {
+    console.error('Errore nella sottoscrizione alla squadra:', error);
+    return false;
+  }
+};
+
+/**
+ * Quando un utente si disiscrive da una squadra, annulla la sottoscrizione al topic
+ * @param {string} teamId - ID della squadra
+ */
+export const unsubscribeFromTeam = async (teamId) => {
+  try {
+    await api.post('/api/fcm/unsubscribe-team', { teamId });
+    console.log(`Disiscritto dalle notifiche per la squadra ${teamId}`);
+    return true;
+  } catch (error) {
+    console.error('Errore nella disiscrizione dalla squadra:', error);
+    return false;
+  }
+};
+
 export default {
   requestNotificationPermission,
   registerTokenWithServer,
   unregisterToken,
-  setOnMessageHandler
+  setOnMessageHandler,
+  subscribeToTeam,
+  unsubscribeFromTeam
 };

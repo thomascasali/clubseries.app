@@ -6,6 +6,7 @@ const Team = require('../models/Team');
 const Match = require('../models/Match');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const notificationService = require('./notificationService');
 
 /**
  * Categorie supportate per la sincronizzazione
@@ -25,6 +26,14 @@ const CATEGORIES = [
 const sendMatchNotifications = async (matches, isNew = false) => {
   try {
     for (const match of matches) {
+      // Ignora i Golden Set senza risultati
+      if (match.isGoldenSet && 
+          (!match.officialScoreA || !match.officialScoreA.length || 
+           !match.officialScoreB || !match.officialScoreB.length)) {
+        logger.info(`Skipping notification for Golden Set ${match.matchId} without scores`);
+        continue;
+      }
+
       // Assicurati che i riferimenti alle squadre siano popolati
       await match.populate('teamA', 'name category');
       await match.populate('teamB', 'name category');
@@ -57,10 +66,6 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         ? new Date(match.date).toLocaleDateString('it-IT', dateOptions)
         : 'Data da definire';
       
-      // Determina il tipo di team (A, B o G)
-      const teamALabel = match.teamACode === 'G' ? 'Golden Set' : `Team ${match.teamACode}`;
-      const teamBLabel = match.teamBCode === 'G' ? 'Golden Set' : `Team ${match.teamBCode}`;
-      
       // Crea notifiche per gli utenti
       for (const user of uniqueUsers) {
         // Determina se l'utente è iscritto alla squadra A o B (o entrambe)
@@ -71,47 +76,78 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         const teamId = isTeamA ? match.teamA._id : match.teamB._id;
         const myTeam = isTeamA ? match.teamA.name : match.teamB.name;
         const otherTeam = isTeamA ? match.teamB.name : match.teamA.name;
-        const myTeamCode = isTeamA ? teamALabel : teamBLabel;
-        const otherTeamCode = isTeamA ? teamBLabel : teamALabel;
         
         // Crea il messaggio della notifica
         let message;
-        if (isNew) {
-          message = `🏐 Nuova partita programmata!\n\n`;
-        } else {
-          message = `🔄 Aggiornamento partita!\n\n`;
-        }
         
-        // Aggiungi l'indicazione se è un golden set
+        // Gestione specifica per i Golden Set
         if (match.isGoldenSet) {
-          message = `🏆 ${message.substring(2)}`;
-        }
-        
-        message += `${myTeam} ${myTeamCode} vs ${otherTeam} ${otherTeamCode}\n`;
-        message += `Data: ${formattedDate}\n`;
-        message += `Orario: ${match.time}\n`;
-        message += `Campo: ${match.court}\n`;
-        message += `Fase: ${match.phase}\n`;
-        
-        // Se ci sono punteggi, aggiungili alla notifica
-        if (match.scoreA?.length > 0 && match.scoreB?.length > 0) {
-          const formattedScore = match.scoreA.map((score, idx) => 
-            `${score}-${match.scoreB[idx]}`
-          ).join(', ');
+          if (match.officialScoreA && match.officialScoreA.length > 0 && 
+              match.officialScoreB && match.officialScoreB.length > 0) {
+            // Golden Set con risultati
+            const scoreA = match.officialScoreA[0];
+            const scoreB = match.officialScoreB[0];
+            
+            message = `🏆 GOLDEN SET: Risultato finale!\n\n`;
+            message += `${match.teamA.name} vs ${match.teamB.name}\n`;
+            message += `Punteggio: ${scoreA}-${scoreB}\n`;
+            
+            // Determina il vincitore
+            if (match.officialResult === 'teamA') {
+              message += `Vittoria di ${match.teamA.name}`;
+            } else if (match.officialResult === 'teamB') {
+              message += `Vittoria di ${match.teamB.name}`;
+            } else {
+              message += `Risultato in attesa`;
+            }
+          } else {
+            // Questo caso non dovrebbe verificarsi grazie al controllo all'inizio
+            message = `🏆 GOLDEN SET programmato!\n\n`;
+            message += `${match.teamA.name} vs ${match.teamB.name}\n`;
+            message += `Data: ${formattedDate}\n`;
+            message += `Orario: ${match.time}\n`;
+            message += `Campo: ${match.court}\n`;
+          }
+        } else {
+          // Match normali
+          const teamALabel = match.teamACode ? `Team ${match.teamACode}` : '';
+          const teamBLabel = match.teamBCode ? `Team ${match.teamBCode}` : '';
+          const myTeamCode = isTeamA ? teamALabel : teamBLabel;
+          const otherTeamCode = isTeamA ? teamBLabel : teamALabel;
           
-          message += `\nPunteggio: ${formattedScore}\n`;
-          
-          // Aggiunge il risultato finale
-          let resultText = 'In attesa di conferma';
-          if (match.confirmedByTeamA && match.confirmedByTeamB) {
-            resultText = match.result === 'teamA' 
-              ? `Vittoria ${match.teamA.name}` 
-              : match.result === 'teamB' 
-                ? `Vittoria ${match.teamB.name}` 
-                : 'Pareggio';
+          if (isNew) {
+            message = `🏐 Nuova partita programmata!\n\n`;
+          } else {
+            message = `🔄 Aggiornamento partita!\n\n`;
           }
           
-          message += `Risultato: ${resultText}`;
+          message += `${myTeam}${myTeamCode ? ' ' + myTeamCode : ''} vs ${otherTeam}${otherTeamCode ? ' ' + otherTeamCode : ''}\n`;
+          message += `Data: ${formattedDate}\n`;
+          message += `Orario: ${match.time}\n`;
+          message += `Campo: ${match.court}\n`;
+          message += `Fase: ${match.phase}\n`;
+          
+          // Se ci sono punteggi ufficiali, aggiungili
+          if (match.officialScoreA && match.officialScoreA.length > 0 && 
+              match.officialScoreB && match.officialScoreB.length > 0) {
+            const formattedScore = match.officialScoreA.map((score, idx) => 
+              `${score}-${match.officialScoreB[idx]}`
+            ).join(', ');
+            
+            message += `\nPunteggio: ${formattedScore}\n`;
+            
+            // Aggiungi il risultato finale
+            let resultText = 'In attesa';
+            if (match.officialResult === 'teamA') {
+              resultText = `Vittoria ${match.teamA.name}`;
+            } else if (match.officialResult === 'teamB') {
+              resultText = `Vittoria ${match.teamB.name}`;
+            } else if (match.officialResult === 'draw') {
+              resultText = 'Pareggio';
+            }
+            
+            message += `Risultato: ${resultText}`;
+          }
         }
         
         // Crea la notifica
@@ -127,6 +163,10 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         logger.info(`Notification created for user ${user._id} about match ${match._id}`);
       }
     }
+    
+    // Processa le notifiche immediatamente
+    await notificationService.processNotifications();
+    
   } catch (error) {
     logger.error(`Error sending match notifications: ${error.message}`);
   }
@@ -161,9 +201,6 @@ const syncFromGoogleSheets = async () => {
         Team
       );
       
-      // Conta il numero di partite prima della sincronizzazione
-      const matchCountBefore = await Match.countDocuments({ category });
-      
       // Sincronizza partite
       const matches = await googleSheetsService.syncMatchesFromSheet(
         spreadsheetId,
@@ -182,27 +219,45 @@ const syncFromGoogleSheets = async () => {
       const now = new Date();
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
       
-      const newMatches = matches.filter(match => 
-        match.createdAt && match.createdAt > fiveMinutesAgo
-      );
+      const newMatches = matches.filter(match => {
+        // Match creato di recente
+        const isRecent = match.createdAt && match.createdAt > fiveMinutesAgo;
+        
+        // Per i Golden Set, consideriamo solo quelli con punteggi
+        if (match.isGoldenSet) {
+          return isRecent && match.officialScoreA && match.officialScoreA.length > 0;
+        }
+        
+        // Per i match normali, tutti quelli recenti
+        return isRecent;
+      });
       
       // Filtra le partite aggiornate (non nuove)
-      const updatedMatches = matches.filter(match => 
-        match.updatedAt && match.createdAt && 
-        match.updatedAt.getTime() > match.createdAt.getTime() + 60000 && // +1 minuto per evitare falsi positivi
-        match.updatedAt > fiveMinutesAgo
-      );
+      const updatedMatches = matches.filter(match => {
+        // Match aggiornato di recente (ma non appena creato)
+        const isRecentlyUpdated = match.updatedAt && match.createdAt && 
+                                match.updatedAt.getTime() > match.createdAt.getTime() + 60000 && 
+                                match.updatedAt > fiveMinutesAgo;
+        
+        // Per i Golden Set, consideriamo solo quelli che hanno avuto un cambio di risultato
+        if (match.isGoldenSet) {
+          return isRecentlyUpdated && match.resultChanged === true;
+        }
+        
+        // Per i match normali, tutti quelli aggiornati recentemente
+        return isRecentlyUpdated;
+      });
       
       // Se ci sono nuove partite, invia notifiche
       if (newMatches.length > 0) {
+        logger.info(`Found ${newMatches.length} new matches in ${category}, sending notifications...`);
         await sendMatchNotifications(newMatches, true);
-        logger.info(`Sent notifications for ${newMatches.length} new matches in ${category}`);
       }
       
       // Se ci sono partite aggiornate, invia notifiche
       if (updatedMatches.length > 0) {
+        logger.info(`Found ${updatedMatches.length} updated matches in ${category}, sending notifications...`);
         await sendMatchNotifications(updatedMatches, false);
-        logger.info(`Sent notifications for ${updatedMatches.length} updated matches in ${category}`);
       }
       
       logger.info(`Synced ${teams.length} teams and ${matches.length} matches for ${category}`);
@@ -220,7 +275,7 @@ const syncFromGoogleSheets = async () => {
  * Inizializza lo scheduler di sincronizzazione
  */
 const initSyncScheduler = () => {
-  // Sincronizza da Google Sheets ogni 30 minuti
+  // Sincronizza da Google Sheets ogni 3 minuti
   cron.schedule('*/3 * * * *', async () => {
     try {
       await syncFromGoogleSheets();
