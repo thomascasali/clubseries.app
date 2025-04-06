@@ -150,6 +150,20 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           }
         }
         
+        // Verifica se esiste già una notifica simile per questo utente e match
+        // per evitare notifiche duplicate
+        const existingNotification = await Notification.findOne({
+          user: user._id,
+          match: match._id,
+          type: 'match_scheduled',
+          createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // Ultime 30 minuti
+        });
+        
+        if (existingNotification) {
+          logger.info(`Skipping duplicate notification for user ${user._id} about match ${match._id} (previous notification exists within 30 minutes)`);
+          continue;
+        }
+        
         // Crea la notifica
         await Notification.create({
           user: user._id,
@@ -173,6 +187,51 @@ const sendMatchNotifications = async (matches, isNew = false) => {
 };
 
 /**
+ * Funzione per confrontare array
+ * @param {Array} arr1 Primo array
+ * @param {Array} arr2 Secondo array
+ * @returns {boolean} True se gli array sono uguali
+ */
+const arraysEqual = (arr1, arr2) => {
+  if (!arr1 && !arr2) return true;
+  if (!arr1 || !arr2) return false;
+  if (arr1.length !== arr2.length) return false;
+  
+  for (let i = 0; i < arr1.length; i++) {
+    if (arr1[i] !== arr2[i]) return false;
+  }
+  
+  return true;
+};
+
+/**
+ * Funzione per verificare se i dati della partita sono effettivamente cambiati
+ * @param {Object} newMatch Nuovi dati della partita
+ * @param {Object} oldMatch Vecchi dati della partita (dal database)
+ * @returns {boolean} True se ci sono modifiche significative
+ */
+const hasSignificantChanges = (newMatch, oldMatch) => {
+  if (!oldMatch) return true; // Se non c'è un match precedente, è considerato nuovo
+  
+  // Controlliamo solo i campi che generano notifiche quando cambiano
+  const significantChanges = 
+    newMatch.date?.toString() !== oldMatch.date?.toString() ||
+    newMatch.time !== oldMatch.time ||
+    newMatch.court !== oldMatch.court ||
+    newMatch.phase !== oldMatch.phase ||
+    !arraysEqual(newMatch.officialScoreA, oldMatch.officialScoreA) ||
+    !arraysEqual(newMatch.officialScoreB, oldMatch.officialScoreB) ||
+    newMatch.officialResult !== oldMatch.officialResult;
+  
+  if (significantChanges) {
+    logger.info(`Significant changes detected for match ${newMatch.matchId}`);
+    return true;
+  }
+  
+  return false;
+};
+
+/**
  * Funzione per sincronizzare dati da Google Sheets
  */
 const syncFromGoogleSheets = async () => {
@@ -193,6 +252,15 @@ const syncFromGoogleSheets = async () => {
       }
       
       logger.info(`Syncing category: ${category}`);
+      
+      // Prima otteniamo le partite esistenti dal database per il confronto
+      const existingMatches = await Match.find({ category }).lean();
+      
+      // Mappa per un accesso rapido ai dati precedenti
+      const matchesMap = new Map();
+      existingMatches.forEach(match => {
+        matchesMap.set(match.matchId, match);
+      });
       
       // Sincronizza team
       const teams = await googleSheetsService.syncTeamsFromSheet(
@@ -219,34 +287,57 @@ const syncFromGoogleSheets = async () => {
       const now = new Date();
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
       
-      const newMatches = matches.filter(match => {
-        // Match creato di recente
-        const isRecent = match.createdAt && match.createdAt > fiveMinutesAgo;
+      // Aggiungiamo informazioni su modifiche significative
+      const newAndUpdatedMatches = matches.map(match => {
+        const existingMatch = matchesMap.get(match.matchId);
         
-        // Per i Golden Set, consideriamo solo quelli con punteggi
-        if (match.isGoldenSet) {
-          return isRecent && match.officialScoreA && match.officialScoreA.length > 0;
+        // Flag per match creato recentemente
+        const isNew = !existingMatch || 
+                     (match.createdAt && match.createdAt > fiveMinutesAgo);
+        
+        // Flag per modifiche significative
+        const hasChanges = hasSignificantChanges(match, existingMatch);
+        
+        // Flag per aggiornamento recente
+        const isRecentUpdate = match.updatedAt && match.createdAt && 
+                              match.updatedAt.getTime() > match.createdAt.getTime() + 60000 && 
+                              match.updatedAt > fiveMinutesAgo;
+        
+        return {
+          ...match,
+          _isNew: isNew,
+          _hasChanges: hasChanges,
+          _isRecentUpdate: isRecentUpdate
+        };
+      });
+      
+      // Filtra le partite nuove
+      const newMatches = newAndUpdatedMatches.filter(match => {
+        // Solo match nuovi con modifiche significative
+        if (match._isNew && match._hasChanges) {
+          // Per i Golden Set, consideriamo solo quelli con punteggi
+          if (match.isGoldenSet) {
+            return match.officialScoreA && match.officialScoreA.length > 0;
+          }
+          return true;
         }
-        
-        // Per i match normali, tutti quelli recenti
-        return isRecent;
+        return false;
       });
       
       // Filtra le partite aggiornate (non nuove)
-      const updatedMatches = matches.filter(match => {
-        // Match aggiornato di recente (ma non appena creato)
-        const isRecentlyUpdated = match.updatedAt && match.createdAt && 
-                                match.updatedAt.getTime() > match.createdAt.getTime() + 60000 && 
-                                match.updatedAt > fiveMinutesAgo;
-        
-        // Per i Golden Set, consideriamo solo quelli che hanno avuto un cambio di risultato
-        if (match.isGoldenSet) {
-          return isRecentlyUpdated && match.resultChanged === true;
+      const updatedMatches = newAndUpdatedMatches.filter(match => {
+        // Solo match aggiornati recentemente con modifiche significative
+        if (!match._isNew && match._isRecentUpdate && match._hasChanges) {
+          // Per i Golden Set, consideriamo solo quelli che hanno avuto un cambio di risultato
+          if (match.isGoldenSet) {
+            return match.resultChanged === true;
+          }
+          return true;
         }
-        
-        // Per i match normali, tutti quelli aggiornati recentemente
-        return isRecentlyUpdated;
+        return false;
       });
+      
+      logger.info(`Category ${category}: Found ${newMatches.length} new and ${updatedMatches.length} updated matches with significant changes`);
       
       // Se ci sono nuove partite, invia notifiche
       if (newMatches.length > 0) {
@@ -276,7 +367,7 @@ const syncFromGoogleSheets = async () => {
  */
 const initSyncScheduler = () => {
   // Sincronizza da Google Sheets ogni 3 minuti
-  cron.schedule('*/3 * * * *', async () => {
+  cron.schedule('*/10 * * * *', async () => {  // Modificato da */3 a */10 per ridurre la frequenza
     try {
       await syncFromGoogleSheets();
     } catch (error) {
@@ -294,7 +385,7 @@ const initSyncScheduler = () => {
     }
   }, 10000); // Attendi 10 secondi per assicurarsi che il database sia connesso
   
-  logger.info('Sync scheduler initialized');
+  logger.info('Sync scheduler initialized with 10-minute interval');
 };
 
 module.exports = {

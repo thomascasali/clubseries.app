@@ -64,10 +64,14 @@ const hasSheetChanged = async (spreadsheetId, category, newHash) => {
     const tracking = await SheetTracking.findOne({ spreadsheetId, category });
     
     if (!tracking || !tracking.matchesHash) {
+      logger.info(`Nessun tracking precedente trovato per ${category}, considerando come modificato`);
       return true; // Prima sincronizzazione o nessun hash precedente
     }
     
-    return tracking.matchesHash !== newHash;
+    const hasChanged = tracking.matchesHash !== newHash;
+    logger.info(`Foglio ${category} ${hasChanged ? 'modificato' : 'non modificato'} (hash precedente: ${tracking.matchesHash.substring(0, 8)}..., nuovo hash: ${newHash.substring(0, 8)}...)`);
+    
+    return hasChanged;
   } catch (error) {
     logger.error(`Error checking if sheet has changed: ${error.message}`);
     return true; // In caso di errore, assumiamo che ci siano cambiamenti da processare

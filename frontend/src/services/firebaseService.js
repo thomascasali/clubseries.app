@@ -124,7 +124,7 @@ export const requestNotificationPermission = async () => {
 export const registerTokenWithServer = async (token) => {
   try {
     // Usa il nuovo endpoint FCM che abbiamo creato
-    await api.post('/api/fcm/register', { token });
+    await api.post('/fcm/register', { token });
     console.log('Token FCM registrato sul server');
     return true;
   } catch (error) {
@@ -148,7 +148,7 @@ export const unregisterToken = async () => {
     
     if (currentToken) {
       // Elimina il token dal server
-      await api.post('/api/fcm/unregister', { token: currentToken });
+      await api.post('/fcm/unregister', { token: currentToken });
       
       // Elimina il token da Firebase
       await deleteToken(messaging);
@@ -177,7 +177,7 @@ export const setOnMessageHandler = (callback) => {
  */
 export const subscribeToTeam = async (teamId) => {
   try {
-    await api.post('/api/fcm/subscribe-team', { teamId });
+    await api.post('/fcm/subscribe-team', { teamId });
     console.log(`Iscritto alle notifiche per la squadra ${teamId}`);
     return true;
   } catch (error) {
@@ -192,7 +192,7 @@ export const subscribeToTeam = async (teamId) => {
  */
 export const unsubscribeFromTeam = async (teamId) => {
   try {
-    await api.post('/api/fcm/unsubscribe-team', { teamId });
+    await api.post('/fcm/unsubscribe-team', { teamId });
     console.log(`Disiscritto dalle notifiche per la squadra ${teamId}`);
     return true;
   } catch (error) {

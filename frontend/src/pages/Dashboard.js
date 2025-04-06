@@ -256,9 +256,9 @@ const Dashboard = () => {
           />
         )}
 
-        <Grid container spacing={4} mt={2}>
+        <Grid container spacing={4} sx={{ mt: 2 }}>
           {/* Sezione principale con le partite recenti e imminenti */}
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <MatchesSection
               loading={loading.matches}
               error={error.matches}
@@ -272,12 +272,12 @@ const Dashboard = () => {
           </Grid>
           
           {!currentUser ? (
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <SignupPrompt />
             </Grid>
           ) : (
             <>
-              <Grid item xs={12} md={6}>
+              <Grid xs={12} sm={6}>
                 <TeamsSection
                   loading={loading.teams}
                   error={error.teams}
@@ -285,7 +285,7 @@ const Dashboard = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} md={6}>
+              <Grid xs={12} sm={6}>
                 <NotificationsSection
                   loading={loading.notifications}
                   error={error.notifications}
