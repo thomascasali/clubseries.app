@@ -218,16 +218,16 @@ const Notifications = () => {
                             {moment(notification.createdAt).fromNow()}
                           </Typography>
                           {notification.match && (
-                            <Button
-                              size="small"
-                              variant="text"
-                              component={RouterLink}
-                              to={`/matches/${notification.match}`}
-                              sx={{ mt: 1 }}
-                            >
-                              Dettagli partita
-                            </Button>
-                          )}
+                          <Button
+                            size="small"
+                            variant="text"
+                            component={RouterLink}
+                            to={`/matches/${notification.match._id.toString()}`}
+                            sx={{ mt: 1 }}
+                          >
+                            Dettagli partita
+                          </Button>
+                        )}
                         </>
                       }
                     />

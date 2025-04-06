@@ -104,7 +104,7 @@ const findTeamInText = (text, validTeamNames) => {
   // Verifica esplicita per il Golden Set
   if (text && text.toLowerCase().includes('team g')) {
     const cleanTeamName = text.replace(/\s+Team\s+G(?:\s+vs\s+|$)/i, '').trim();
-    logger.info(`Golden Set detected for team: ${cleanTeamName}`);
+    //logger.info(`Golden Set detected for team: ${cleanTeamName}`);
     
     // Cerca il team nei validTeamNames
     const foundTeam = validTeamNames.find(name => 

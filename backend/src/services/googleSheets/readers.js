@@ -61,7 +61,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       
       if (isGoldenSet) {
         goldenSetRows.push({row, index: i});
-        logger.info(`★★★ Golden Set individuato in foglio ${sheetName}, riga ${i+1}: MatchID="${matchId}", Teams="${matchText}" ★★★`);
+        //logger.info(`★★★ Golden Set individuato in foglio ${sheetName}, riga ${i+1}: MatchID="${matchId}", Teams="${matchText}" ★★★`);
       }
     }
     
@@ -117,9 +117,9 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       
       // Log dettagliato solo per i Golden Set
       if (isGoldenSet) {
-        logger.info(`Golden Set confermato: ${matchId}`);
-        logger.info(`- Indicatori: matchId=${isMatchIdGolden}, text=${containsTeamG}, team=${hasGoldenTeam}, phase=${hasGoldenPhase}`);
-        logger.info(`- TeamA: ${teamAInfo.teamName || 'Unknown'} (${teamAInfo.teamCode || 'Unknown'}), TeamB: ${teamBInfo.teamName || 'Unknown'} (${teamBInfo.teamCode || 'Unknown'})`);
+        //logger.info(`Golden Set confermato: ${matchId}`);
+        //logger.info(`- Indicatori: matchId=${isMatchIdGolden}, text=${containsTeamG}, team=${hasGoldenTeam}, phase=${hasGoldenPhase}`);
+        //logger.info(`- TeamA: ${teamAInfo.teamName || 'Unknown'} (${teamAInfo.teamCode || 'Unknown'}), TeamB: ${teamBInfo.teamName || 'Unknown'} (${teamBInfo.teamCode || 'Unknown'})`);
       }
 
       // Leggi i punteggi dalle colonne appropriate (G, I, K oppure 7, 9, 11 in base 0)
@@ -171,9 +171,9 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       
       // Log di debug per il match creato
       if (isGoldenSet) {
-        logger.info(`Golden Set registrato: ${matchId}, TeamA: ${matchData.teamA} (${matchData.teamACode}), TeamB: ${matchData.teamB} (${matchData.teamBCode})`);
+        //logger.info(`Golden Set registrato: ${matchId}, TeamA: ${matchData.teamA} (${matchData.teamACode}), TeamB: ${matchData.teamB} (${matchData.teamBCode})`);
       } else {
-        logger.debug(`Match normale: ${matchId}, TeamA: ${matchData.teamA} (${matchData.teamACode}), TeamB: ${matchData.teamB} (${matchData.teamBCode})`);
+        //logger.debug(`Match normale: ${matchId}, TeamA: ${matchData.teamA} (${matchData.teamACode}), TeamB: ${matchData.teamB} (${matchData.teamBCode})`);
       }
     }
   }
@@ -184,7 +184,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
   
   if (goldenSets.length > 0) {
     goldenSets.forEach(gs => {
-      logger.info(`Golden Set: ${gs.matchId}, Teams: ${gs.teamA} (${gs.teamACode}) vs ${gs.teamB} (${gs.teamBCode}), Text: ${gs.originalMatchText}`);
+      //logger.info(`Golden Set: ${gs.matchId}, Teams: ${gs.teamA} (${gs.teamACode}) vs ${gs.teamB} (${gs.teamBCode}), Text: ${gs.originalMatchText}`);
     });
   }
 

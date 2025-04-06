@@ -184,15 +184,15 @@ const NotificationsSection = ({ loading, error, notifications }) => {
                   {notification.message}
                 </Typography>
                 {notification.match && (
-                  <Button 
-                    size="small" 
-                    component={RouterLink} 
-                    to={`/matches/${notification.match}`}
-                    sx={{ mt: 1 }}
-                  >
-                    Dettagli partita
-                  </Button>
-                )}
+                <Button 
+                  size="small" 
+                  component={RouterLink} 
+                  to={`/matches/${notification.match._id}`}
+                  sx={{ mt: 1 }}
+                >
+                  Dettagli partita
+                </Button>
+              )}
               </CardContent>
             </Card>
           ))

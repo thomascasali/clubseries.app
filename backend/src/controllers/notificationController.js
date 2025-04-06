@@ -11,9 +11,24 @@ exports.getNotifications = async (req, res) => {
       .populate('match', 'matchId date time teamA teamB')
       .sort({ createdAt: -1 });
     
-    res.status(200).json(notifications);
+    // Conversione sicura dei matchId
+    const safeNotifications = notifications.map(notification => {
+      const notificationObj = notification.toObject();
+      // Assicurati che l'ID del match sia correttamente convertito in stringa
+      if (notificationObj.match && notificationObj.match._id) {
+        notificationObj.match._id = notificationObj.match._id.toString();
+      }
+      return notificationObj;
+    });
+    
+    res.status(200).json(safeNotifications);
   } catch (error) {
-    logger.error(`Error in getNotifications: ${error.message}`);
+    const errorInfo = {
+      file: 'notificationController.js',
+      function: 'getNotifications',
+      error: error.message
+    };
+    logger.error(`Error in getNotifications: ${error.message}`, errorInfo);
     res.status(500).json({ message: error.message });
   }
 };

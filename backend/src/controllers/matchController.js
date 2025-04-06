@@ -56,7 +56,16 @@ exports.getMatches = async (req, res) => {
 // @access  Public
 exports.getMatchById = async (req, res) => {
   try {
-    const match = await Match.findById(req.params.id)
+    // Estraiamo l'ID e verifichiamo che sia una stringa valida
+    const matchId = req.params.id;
+    
+    // Se l'ID è un oggetto invece di una stringa, estraiamo la proprietà _id
+    // Questo può accadere quando l'ID viene passato direttamente da un oggetto
+    const idToFind = (typeof matchId === 'object' && matchId !== null && matchId._id) 
+      ? matchId._id.toString() 
+      : matchId;
+    
+    const match = await Match.findById(idToFind)
       .populate('teamA', 'name category')
       .populate('teamB', 'name category');
     
@@ -66,7 +75,8 @@ exports.getMatchById = async (req, res) => {
     
     res.status(200).json(match);
   } catch (error) {
-    logger.error(`Error in getMatchById: ${error.message}`);
+    // Miglioriamo il logging con più dettagli
+    logger.error(`Error in getMatchById: ${error.message}, param: ${JSON.stringify(req.params.id)}`);
     res.status(500).json({ message: error.message });
   }
 };
