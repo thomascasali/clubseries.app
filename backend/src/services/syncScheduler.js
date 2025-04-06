@@ -94,7 +94,7 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         message += `Fase: ${match.phase}\n`;
         
         // Se ci sono punteggi, aggiungili alla notifica
-        if (match.scoreA.length > 0 && match.scoreB.length > 0) {
+        if (match.scoreA?.length > 0 && match.scoreB?.length > 0) {
           const formattedScore = match.scoreA.map((score, idx) => 
             `${score}-${match.scoreB[idx]}`
           ).join(', ');

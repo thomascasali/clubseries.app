@@ -95,7 +95,7 @@ export const requestNotificationPermission = async () => {
  */
 export const registerTokenWithServer = async (token) => {
   try {
-    await api.post('/api/users/fcm-token', { token });
+    await api.post('/users/fcm-token', { token });
     console.log('Token FCM registrato sul server');
     return true;
   } catch (error) {

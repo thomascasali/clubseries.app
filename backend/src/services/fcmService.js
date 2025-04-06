@@ -84,7 +84,7 @@ const sendToDevices = async (tokens, notification, data = {}) => {
       }
     };
 
-    const response = await admin.messaging().sendMulticast(message);
+    const response = await admin.messaging.sendMulticast(message);
     logger.info(`Sent notification to ${response.successCount} devices, failed: ${response.failureCount}`);
     return response;
   } catch (error) {
