@@ -48,7 +48,7 @@ exports.processNotifications = async () => {
         // Verifica se l'utente ha token FCM registrati
         if (notification.user && notification.user.fcmTokens && notification.user.fcmTokens.length > 0) {
           // Prepara notifica FCM
-          const notificationTitle = getNotificationTitle(notification.type);
+          const notificationTitle = getNotificationTitle(notification.type, message);
           
           // Dividi il messaggio in linee
           const messageLines = message.split('\n');
@@ -120,14 +120,37 @@ exports.processNotifications = async () => {
 /**
  * Ottiene un titolo appropriato per il tipo di notifica
  * @param {string} type - Tipo di notifica
+ * @param {string} message - Messaggio della notifica (può contenere indizi sul tipo di modifica)
  * @returns {string} - Titolo della notifica
  */
-function getNotificationTitle(type) {
+function getNotificationTitle(type, message = '') {
+  // Controlla messaggi specifici per determinare il giusto titolo
+  if (message) {
+    if (message.startsWith('🕒 Cambio orario partita')) {
+      return '🕒 Cambio orario';
+    }
+    if (message.startsWith('🏟️ Cambio campo partita')) {
+      return '🏟️ Cambio campo';
+    }
+    if (message.startsWith('📅 Cambio data partita')) {
+      return '📅 Cambio data';
+    }
+    if (message.startsWith('📊 Risultato aggiornato')) {
+      return '📊 Risultato aggiornato';
+    }
+    if (message.startsWith('🏆 GOLDEN SET')) {
+      return '🏆 Golden Set';
+    }
+  }
+
+  // Titoli basati sul tipo di notifica
   switch (type) {
     case 'match_scheduled':
       return '🏐 Nuova Partita';
     case 'match_updated':
       return '🔄 Aggiornamento Partita';
+    case 'result_updated':
+      return '📊 Risultato Aggiornato';
     case 'result_entered':
       return '⚠️ Conferma Risultato';
     case 'result_confirmed':
@@ -180,7 +203,7 @@ exports.createTeamNotification = async (teamId, type, message, matchId = null) =
     
     // Invia anche al topic della squadra
     try {
-      const notificationTitle = getNotificationTitle(type);
+      const notificationTitle = getNotificationTitle(type, message);
       const messageLines = message.split('\n');
       const notificationBody = messageLines[0] + (messageLines.length > 1 ? '...' : '');
       

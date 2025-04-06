@@ -19,6 +19,33 @@ const CATEGORIES = [
 ];
 
 /**
+ * Determina il tipo specifico di modifica
+ * @param {Object} newMatch Nuovi dati della partita
+ * @param {Object} oldMatch Vecchi dati della partita
+ * @returns {string} Tipo di modifica
+ */
+const determineChangeType = (newMatch, oldMatch) => {
+  if (!oldMatch) return 'new_match';
+  
+  // Controlla se sono cambiati i risultati
+  if (!arraysEqual(newMatch.officialScoreA, oldMatch.officialScoreA) || 
+      !arraysEqual(newMatch.officialScoreB, oldMatch.officialScoreB) ||
+      newMatch.officialResult !== oldMatch.officialResult) return 'results_changed';
+  
+  // Controlla se è cambiato l'orario
+  if (newMatch.time !== oldMatch.time) return 'time_changed';
+  
+  // Controlla se è cambiato il campo
+  if (newMatch.court !== oldMatch.court) return 'court_changed';
+  
+  // Controlla se è cambiata la data
+  if (newMatch.date?.toString() !== oldMatch.date?.toString()) return 'date_changed';
+  
+  // Altro tipo di cambiamento
+  return 'other_change';
+};
+
+/**
  * Invia notifiche agli utenti per le partite aggiornate
  * @param {Array} matches - Array di partite sincronizzate o aggiornate
  * @param {boolean} isNew - Indica se sono partite nuove o aggiornate
@@ -96,6 +123,18 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         const myTeam = isTeamA ? matchWithTeams.teamA.name : matchWithTeams.teamB.name;
         const otherTeam = isTeamA ? matchWithTeams.teamB.name : matchWithTeams.teamA.name;
         
+        // Determina il tipo di notifica e di cambiamento
+        let notificationType = 'match_scheduled';
+        const changeType = match._changeType || (isNew ? 'new_match' : 'other_change');
+        
+        if (changeType === 'new_match') {
+          notificationType = 'match_scheduled';
+        } else if (changeType === 'results_changed') {
+          notificationType = 'result_updated';
+        } else if (['time_changed', 'court_changed', 'date_changed', 'other_change'].includes(changeType)) {
+          notificationType = 'match_updated';
+        }
+        
         // Crea il messaggio della notifica
         let message;
         
@@ -134,10 +173,21 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           const myTeamCode = isTeamA ? teamALabel : teamBLabel;
           const otherTeamCode = isTeamA ? teamBLabel : teamALabel;
           
-          if (isNew) {
+          // Imposta l'inizio del messaggio in base al tipo di notifica
+          if (notificationType === 'match_scheduled') {
             message = `🏐 Nuova partita programmata!\n\n`;
-          } else {
-            message = `🔄 Aggiornamento partita!\n\n`;
+          } else if (notificationType === 'match_updated') {
+            if (changeType === 'time_changed') {
+              message = `🕒 Cambio orario partita!\n\n`;
+            } else if (changeType === 'court_changed') {
+              message = `🏟️ Cambio campo partita!\n\n`;
+            } else if (changeType === 'date_changed') {
+              message = `📅 Cambio data partita!\n\n`;
+            } else {
+              message = `🔄 Aggiornamento partita!\n\n`;
+            }
+          } else if (notificationType === 'result_updated') {
+            message = `📊 Risultato aggiornato!\n\n`;
           }
           
           message += `${myTeam}${myTeamCode ? ' ' + myTeamCode : ''} vs ${otherTeam}${otherTeamCode ? ' ' + otherTeamCode : ''}\n`;
@@ -174,7 +224,7 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         const existingNotification = await Notification.findOne({
           user: user._id,
           match: matchWithTeams._id,
-          type: 'match_scheduled',
+          type: notificationType,
           createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // Ultime 30 minuti
         });
         
@@ -187,7 +237,7 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           user: user._id,
           team: teamId,
           match: matchWithTeams._id,
-          type: 'match_scheduled',
+          type: notificationType,
           message,
           status: 'pending'
         });
@@ -311,11 +361,15 @@ const syncFromGoogleSheets = async () => {
                               match.updatedAt.getTime() > match.createdAt.getTime() + 60000 && 
                               match.updatedAt > fiveMinutesAgo;
         
+        // Determina il tipo specifico di modifica
+        const changeType = determineChangeType(match, existingMatch);
+        
         return {
           ...match.toObject(),  // Converti il documento Mongoose in un oggetto plain
           _isNew: isNew,
           _hasChanges: hasChanges,
-          _isRecentUpdate: isRecentUpdate
+          _isRecentUpdate: isRecentUpdate,
+          _changeType: changeType
         };
       });
       
@@ -348,6 +402,16 @@ const syncFromGoogleSheets = async () => {
       // Registra solo se ci sono match rilevanti
       if (newMatches.length > 0 || updatedMatches.length > 0) {
         logger.info(`Category ${category}: Found ${newMatches.length} new and ${updatedMatches.length} updated matches with significant changes`);
+        
+        // Log dettagliato dei tipi di cambiamenti
+        if (updatedMatches.length > 0) {
+          const changeTypes = {};
+          updatedMatches.forEach(match => {
+            const type = match._changeType || 'unknown';
+            changeTypes[type] = (changeTypes[type] || 0) + 1;
+          });
+          logger.info(`Updated matches by change type: ${JSON.stringify(changeTypes)}`);
+        }
       }
       
       // Se ci sono nuove partite, invia notifiche
