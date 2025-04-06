@@ -8,6 +8,7 @@
 │   ├── package.json
 │   ├── package-lock.json
 │   ├── reset-db-and-sync-all.js
+│   ├── reset-notifications.js
 │   ├── reset-sync-category.js
 │   ├── src
 │   │   ├── app.js
@@ -19,6 +20,7 @@
 │   │   │   └── {google,notifications},utils}
 │   │   ├── controllers
 │   │   │   ├── authController.js
+│   │   │   ├── fcmController.js
 │   │   │   ├── googleSheetsController.js
 │   │   │   ├── matchController.js
 │   │   │   ├── notificationController.js
@@ -34,6 +36,7 @@
 │   │   │   └── User.js
 │   │   ├── routes
 │   │   │   ├── auth.js
+│   │   │   ├── fcm.js
 │   │   │   ├── googleSheets.js
 │   │   │   ├── matches.js
 │   │   │   ├── notifications.js
@@ -57,9 +60,13 @@
 │   │       └── sheetsUtils.js
 │   ├── sync-all-categories.js
 │   ├── test-date-parsing.js
+│   ├── test-fcm.js
+│   ├── test-fcm-only.js
 │   ├── test-find-golden.js
+│   ├── test-firebase-config.js
 │   ├── test-force-sync.js
 │   ├── test-golden-sets.js
+│   ├── test-logger.js
 │   ├── test-read-pools.js
 │   ├── test-sheets-connection.js
 │   ├── test-sheet-sync.js
@@ -123,6 +130,7 @@
 │       │   ├── Matches.js
 │       │   ├── notifications
 │       │   │   └── Notifications.js
+│       │   ├── NotificationsDebug.js
 │       │   ├── Notifications.js
 │       │   ├── PrivacyPolicy.js
 │       │   ├── Subscriptions.js
@@ -142,4 +150,4 @@
 ├── .gitignore
 └── tree_clubseries.txt
 
-29 directories, 113 files
+29 directories, 121 files

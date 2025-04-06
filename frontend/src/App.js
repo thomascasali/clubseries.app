@@ -21,6 +21,7 @@ import Teams from './pages/Teams';
 import Subscriptions from './pages/Subscriptions';
 import Notifications from './pages/notifications/Notifications';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import NotificationsDebug from './pages/NotificationsDebug';
 
 // Placeholder pages for routes that will be implemented later
 const Profile = () => <div>Profile Page</div>;
@@ -93,7 +94,9 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            
+            <Route path="debug/notifications" element={<PrivateRoute><NotificationsDebug /></PrivateRoute>
+  } 
+/>
             <Route path="/" element={<MainLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="matches" element={<Matches />} />
