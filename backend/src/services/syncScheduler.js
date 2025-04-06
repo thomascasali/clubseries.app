@@ -30,22 +30,37 @@ const sendMatchNotifications = async (matches, isNew = false) => {
       if (match.isGoldenSet && 
           (!match.officialScoreA || !match.officialScoreA.length || 
            !match.officialScoreB || !match.officialScoreB.length)) {
-        logger.info(`Skipping notification for Golden Set ${match.matchId} without scores`);
         continue;
       }
 
-      // Assicurati che i riferimenti alle squadre siano popolati
-      await match.populate('teamA', 'name category');
-      await match.populate('teamB', 'name category');
+      let matchWithTeams = match;
+
+      // Verifica se l'oggetto è un documento Mongoose o un oggetto plain
+      if (!match.populate && (typeof match.teamA === 'string' || typeof match.teamA?.toString === 'function')) {
+        // È un oggetto plain, dobbiamo ottenere il documento completo
+        matchWithTeams = await Match.findById(match._id)
+          .populate('teamA', 'name category')
+          .populate('teamB', 'name category');
+        
+        if (!matchWithTeams) {
+          logger.warn(`Match ${match._id || match.matchId} not found in database, skipping notification`);
+          continue;
+        }
+      } else if (match.populate) {
+        // È un documento Mongoose, popola i riferimenti
+        await match.populate('teamA', 'name category');
+        await match.populate('teamB', 'name category');
+        matchWithTeams = match;
+      }
       
       // Trova gli utenti iscritti alle squadre
       const usersTeamA = await User.find({ 
-        subscribedTeams: match.teamA._id,
+        subscribedTeams: matchWithTeams.teamA._id,
         isActive: true
       });
       
       const usersTeamB = await User.find({ 
-        subscribedTeams: match.teamB._id,
+        subscribedTeams: matchWithTeams.teamB._id,
         isActive: true
       });
       
@@ -55,6 +70,10 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         ...usersTeamB.map(u => [u._id.toString(), u])
       ]).values()];
       
+      if (uniqueUsers.length === 0) {
+        continue; // Salta se nessun utente è iscritto
+      }
+      
       // Formatta la data per la notifica
       const dateOptions = { 
         weekday: 'long', 
@@ -62,8 +81,8 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         month: 'long', 
         day: 'numeric' 
       };
-      const formattedDate = match.date 
-        ? new Date(match.date).toLocaleDateString('it-IT', dateOptions)
+      const formattedDate = matchWithTeams.date 
+        ? new Date(matchWithTeams.date).toLocaleDateString('it-IT', dateOptions)
         : 'Data da definire';
       
       // Crea notifiche per gli utenti
@@ -73,45 +92,45 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         const isTeamB = usersTeamB.some(u => u._id.toString() === user._id.toString());
         
         // Scegli la squadra appropriata per la notifica
-        const teamId = isTeamA ? match.teamA._id : match.teamB._id;
-        const myTeam = isTeamA ? match.teamA.name : match.teamB.name;
-        const otherTeam = isTeamA ? match.teamB.name : match.teamA.name;
+        const teamId = isTeamA ? matchWithTeams.teamA._id : matchWithTeams.teamB._id;
+        const myTeam = isTeamA ? matchWithTeams.teamA.name : matchWithTeams.teamB.name;
+        const otherTeam = isTeamA ? matchWithTeams.teamB.name : matchWithTeams.teamA.name;
         
         // Crea il messaggio della notifica
         let message;
         
         // Gestione specifica per i Golden Set
-        if (match.isGoldenSet) {
-          if (match.officialScoreA && match.officialScoreA.length > 0 && 
-              match.officialScoreB && match.officialScoreB.length > 0) {
+        if (matchWithTeams.isGoldenSet) {
+          if (matchWithTeams.officialScoreA && matchWithTeams.officialScoreA.length > 0 && 
+              matchWithTeams.officialScoreB && matchWithTeams.officialScoreB.length > 0) {
             // Golden Set con risultati
-            const scoreA = match.officialScoreA[0];
-            const scoreB = match.officialScoreB[0];
+            const scoreA = matchWithTeams.officialScoreA[0];
+            const scoreB = matchWithTeams.officialScoreB[0];
             
             message = `🏆 GOLDEN SET: Risultato finale!\n\n`;
-            message += `${match.teamA.name} vs ${match.teamB.name}\n`;
+            message += `${matchWithTeams.teamA.name} vs ${matchWithTeams.teamB.name}\n`;
             message += `Punteggio: ${scoreA}-${scoreB}\n`;
             
             // Determina il vincitore
-            if (match.officialResult === 'teamA') {
-              message += `Vittoria di ${match.teamA.name}`;
-            } else if (match.officialResult === 'teamB') {
-              message += `Vittoria di ${match.teamB.name}`;
+            if (matchWithTeams.officialResult === 'teamA') {
+              message += `Vittoria di ${matchWithTeams.teamA.name}`;
+            } else if (matchWithTeams.officialResult === 'teamB') {
+              message += `Vittoria di ${matchWithTeams.teamB.name}`;
             } else {
               message += `Risultato in attesa`;
             }
           } else {
             // Questo caso non dovrebbe verificarsi grazie al controllo all'inizio
             message = `🏆 GOLDEN SET programmato!\n\n`;
-            message += `${match.teamA.name} vs ${match.teamB.name}\n`;
+            message += `${matchWithTeams.teamA.name} vs ${matchWithTeams.teamB.name}\n`;
             message += `Data: ${formattedDate}\n`;
-            message += `Orario: ${match.time}\n`;
-            message += `Campo: ${match.court}\n`;
+            message += `Orario: ${matchWithTeams.time}\n`;
+            message += `Campo: ${matchWithTeams.court}\n`;
           }
         } else {
           // Match normali
-          const teamALabel = match.teamACode ? `Team ${match.teamACode}` : '';
-          const teamBLabel = match.teamBCode ? `Team ${match.teamBCode}` : '';
+          const teamALabel = matchWithTeams.teamACode ? `Team ${matchWithTeams.teamACode}` : '';
+          const teamBLabel = matchWithTeams.teamBCode ? `Team ${matchWithTeams.teamBCode}` : '';
           const myTeamCode = isTeamA ? teamALabel : teamBLabel;
           const otherTeamCode = isTeamA ? teamBLabel : teamALabel;
           
@@ -123,26 +142,26 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           
           message += `${myTeam}${myTeamCode ? ' ' + myTeamCode : ''} vs ${otherTeam}${otherTeamCode ? ' ' + otherTeamCode : ''}\n`;
           message += `Data: ${formattedDate}\n`;
-          message += `Orario: ${match.time}\n`;
-          message += `Campo: ${match.court}\n`;
-          message += `Fase: ${match.phase}\n`;
+          message += `Orario: ${matchWithTeams.time}\n`;
+          message += `Campo: ${matchWithTeams.court}\n`;
+          message += `Fase: ${matchWithTeams.phase}\n`;
           
           // Se ci sono punteggi ufficiali, aggiungili
-          if (match.officialScoreA && match.officialScoreA.length > 0 && 
-              match.officialScoreB && match.officialScoreB.length > 0) {
-            const formattedScore = match.officialScoreA.map((score, idx) => 
-              `${score}-${match.officialScoreB[idx]}`
+          if (matchWithTeams.officialScoreA && matchWithTeams.officialScoreA.length > 0 && 
+              matchWithTeams.officialScoreB && matchWithTeams.officialScoreB.length > 0) {
+            const formattedScore = matchWithTeams.officialScoreA.map((score, idx) => 
+              `${score}-${matchWithTeams.officialScoreB[idx]}`
             ).join(', ');
             
             message += `\nPunteggio: ${formattedScore}\n`;
             
             // Aggiungi il risultato finale
             let resultText = 'In attesa';
-            if (match.officialResult === 'teamA') {
-              resultText = `Vittoria ${match.teamA.name}`;
-            } else if (match.officialResult === 'teamB') {
-              resultText = `Vittoria ${match.teamB.name}`;
-            } else if (match.officialResult === 'draw') {
+            if (matchWithTeams.officialResult === 'teamA') {
+              resultText = `Vittoria ${matchWithTeams.teamA.name}`;
+            } else if (matchWithTeams.officialResult === 'teamB') {
+              resultText = `Vittoria ${matchWithTeams.teamB.name}`;
+            } else if (matchWithTeams.officialResult === 'draw') {
               resultText = 'Pareggio';
             }
             
@@ -154,13 +173,12 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         // per evitare notifiche duplicate
         const existingNotification = await Notification.findOne({
           user: user._id,
-          match: match._id,
+          match: matchWithTeams._id,
           type: 'match_scheduled',
           createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // Ultime 30 minuti
         });
         
         if (existingNotification) {
-          logger.info(`Skipping duplicate notification for user ${user._id} about match ${match._id} (previous notification exists within 30 minutes)`);
           continue;
         }
         
@@ -168,13 +186,11 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         await Notification.create({
           user: user._id,
           team: teamId,
-          match: match._id,
+          match: matchWithTeams._id,
           type: 'match_scheduled',
           message,
           status: 'pending'
         });
-        
-        logger.info(`Notification created for user ${user._id} about match ${match._id}`);
       }
     }
     
@@ -223,12 +239,7 @@ const hasSignificantChanges = (newMatch, oldMatch) => {
     !arraysEqual(newMatch.officialScoreB, oldMatch.officialScoreB) ||
     newMatch.officialResult !== oldMatch.officialResult;
   
-  if (significantChanges) {
-    logger.info(`Significant changes detected for match ${newMatch.matchId}`);
-    return true;
-  }
-  
-  return false;
+  return significantChanges;
 };
 
 /**
@@ -247,14 +258,12 @@ const syncFromGoogleSheets = async () => {
       
       // Salta se non configurato
       if (!spreadsheetId) {
-        logger.warn(`Skipping category ${category}: No spreadsheet ID configured`);
         continue;
       }
       
-      logger.info(`Syncing category: ${category}`);
-      
       // Prima otteniamo le partite esistenti dal database per il confronto
-      const existingMatches = await Match.find({ category }).lean();
+      // Non usiamo lean() per mantenere i metodi Mongoose
+      const existingMatches = await Match.find({ category });
       
       // Mappa per un accesso rapido ai dati precedenti
       const matchesMap = new Map();
@@ -279,7 +288,6 @@ const syncFromGoogleSheets = async () => {
       
       // Se non ci sono modifiche, continuiamo con la categoria successiva
       if (matches.length === 0) {
-        logger.info(`No changes for category ${category}`);
         continue;
       }
       
@@ -304,7 +312,7 @@ const syncFromGoogleSheets = async () => {
                               match.updatedAt > fiveMinutesAgo;
         
         return {
-          ...match,
+          ...match.toObject(),  // Converti il documento Mongoose in un oggetto plain
           _isNew: isNew,
           _hasChanges: hasChanges,
           _isRecentUpdate: isRecentUpdate
@@ -337,21 +345,21 @@ const syncFromGoogleSheets = async () => {
         return false;
       });
       
-      logger.info(`Category ${category}: Found ${newMatches.length} new and ${updatedMatches.length} updated matches with significant changes`);
+      // Registra solo se ci sono match rilevanti
+      if (newMatches.length > 0 || updatedMatches.length > 0) {
+        logger.info(`Category ${category}: Found ${newMatches.length} new and ${updatedMatches.length} updated matches with significant changes`);
+      }
       
       // Se ci sono nuove partite, invia notifiche
       if (newMatches.length > 0) {
-        logger.info(`Found ${newMatches.length} new matches in ${category}, sending notifications...`);
         await sendMatchNotifications(newMatches, true);
       }
       
       // Se ci sono partite aggiornate, invia notifiche
       if (updatedMatches.length > 0) {
-        logger.info(`Found ${updatedMatches.length} updated matches in ${category}, sending notifications...`);
         await sendMatchNotifications(updatedMatches, false);
       }
       
-      logger.info(`Synced ${teams.length} teams and ${matches.length} matches for ${category}`);
       successCount++;
     } catch (error) {
       logger.error(`Error syncing category ${category} from Google Sheets: ${error.message}`);
@@ -366,8 +374,8 @@ const syncFromGoogleSheets = async () => {
  * Inizializza lo scheduler di sincronizzazione
  */
 const initSyncScheduler = () => {
-  // Sincronizza da Google Sheets ogni 3 minuti
-  cron.schedule('*/10 * * * *', async () => {  // Modificato da */3 a */10 per ridurre la frequenza
+  // Sincronizza da Google Sheets ogni 10 minuti
+  cron.schedule('*/10 * * * *', async () => {
     try {
       await syncFromGoogleSheets();
     } catch (error) {

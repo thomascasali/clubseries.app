@@ -36,7 +36,7 @@ const NotificationsSection = ({ loading, error, notifications }) => {
           </Typography>
         ) : (
           notifications.map((notification) => (
-            <Card key={notification._id} variant="outlined" sx={{ mb: 2 }}>
+            <Card key={notification._id} variant="outlined" sx={{ mb: 2, maxWidth: '100%' }}>
               <CardContent>
                 <Typography variant="subtitle1">
                   {notification.type === 'match_scheduled' && 'Nuova partita programmata'}
@@ -45,7 +45,19 @@ const NotificationsSection = ({ loading, error, notifications }) => {
                   {notification.type === 'result_confirmed' && 'Risultato confermato'}
                   {notification.type === 'result_rejected' && 'Risultato rifiutato'}
                 </Typography>
-                <Typography variant="body2" noWrap sx={{ maxHeight: '3em', overflow: 'hidden' }}>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    maxHeight: '3em', 
+                    overflow: 'hidden', 
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    textOverflow: 'ellipsis',
+                    wordBreak: 'break-word',
+                    whiteSpace: 'normal'
+                  }}
+                >
                   {notification.message}
                 </Typography>
                 {notification.match && (
