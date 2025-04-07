@@ -116,7 +116,7 @@ for (const matchData of matchesFromSheet) {
     ]);
 
     if (!teamA || !teamB) {
-      logger.warn(`Skipping golden set due to missing teams: ${matchData.matchId}, Team A: ${matchData.teamA}, Team B: ${matchData.teamB}`);
+      //logger.warn(`Skipping golden set due to missing teams: ${matchData.matchId}, Team A: ${matchData.teamA}, Team B: ${matchData.teamB}`);
       continue;
     }
     
@@ -197,7 +197,7 @@ for (const matchData of matchesFromSheet) {
     if (resultChanged) {
       logger.info(`Golden Set ${match.matchId} con cambio risultato sincronizzato (${match.officialScoreA.join('-')}-${match.officialScoreB.join('-')})`);
     } else {
-      logger.info(`Golden Set ${match.matchId} sincronizzato senza cambio di risultato`);
+      //logger.info(`Golden Set ${match.matchId} sincronizzato senza cambio di risultato`);
     }
   } catch (error) {
     logger.error(`Error syncing Golden Set ${matchData.matchId}: ${error.message}`);

@@ -5,9 +5,6 @@ const fcmService = require('./fcmService');
 /**
  * Processa le notifiche in sospeso e le invia
  */
-/**
- * Processa le notifiche in sospeso e le invia
- */
 exports.processNotifications = async () => {
   try {
     // Trova tutte le notifiche in sospeso
@@ -38,26 +35,79 @@ exports.processNotifications = async () => {
         
         // Se la notifica è relativa a una partita e ha dettagli sul team code
         if (notification.match && (notification.match.teamACode || notification.match.teamBCode)) {
-          // Elaborazione del messaggio (mantenuto come prima)
-          // ...
+          // Aggiungi informazioni sul Team A/B/G se presenti
+          const teamALabel = notification.match.teamACode ? ` (Team ${notification.match.teamACode})` : '';
+          const teamBLabel = notification.match.teamBCode ? ` (Team ${notification.match.teamBCode})` : '';
+          
+          // Aggiungi etichetta Golden Set se presente
+          const goldenLabel = notification.match.isGoldenSet ? ' [GOLDEN SET]' : '';
+          
+          // Sostituisci nome squadre con nome + team code
+          if (notification.match.teamA && notification.match.teamB) {
+            message = message.replace(
+              `${notification.match.teamA.name} vs ${notification.match.teamB.name}`,
+              `${notification.match.teamA.name}${teamALabel} vs ${notification.match.teamB.name}${teamBLabel}${goldenLabel}`
+            );
+          }
         }
         
         // Verifica se l'utente ha token FCM registrati
         if (notification.user && notification.user.fcmTokens && notification.user.fcmTokens.length > 0) {
-          // Codice di invio FCM (mantenuto come prima)
-          // ...
+          // Prepara notifica FCM
+          const notificationTitle = getNotificationTitle(notification.type, message);
+          const messageLines = message.split('\n');
+          const notificationBody = messageLines[0] + (messageLines.length > 1 ? '...' : '');
           
-          notification.status = 'sent';
-          notification.sentAt = new Date();
-          await notification.save();
-          successCount++;
+          const fcmNotification = {
+            title: notificationTitle,
+            body: notificationBody
+          };
+          
+          // Prepara dati aggiuntivi
+          const data = {
+            type: notification.type,
+            teamId: notification.team ? notification.team._id.toString() : '',
+            teamName: notification.team ? notification.team.name : '',
+            matchId: notification.match ? notification.match._id.toString() : '',
+            notificationId: notification._id.toString(),
+            fullMessage: message,
+            createdAt: notification.createdAt.toISOString()
+          };
+          
+          // Invia a tutti i token dell'utente
+          try {
+            const result = await fcmService.sendToDevices(
+              notification.user.fcmTokens,
+              fcmNotification,
+              data
+            );
+            
+            if (result.successCount > 0) {
+              notification.status = 'sent';
+              notification.sentAt = new Date();
+              await notification.save();
+              logger.info(`FCM notification sent to user ${notification.user._id}`);
+              successCount++;
+            } else {
+              notification.status = 'failed';
+              notification.errorDetails = `FCM delivery failed: ${result.failureCount} failures`;
+              await notification.save();
+              logger.error(`Failed to send FCM notification to user ${notification.user._id}`);
+              failedCount++;
+            }
+          } catch (fcmError) {
+            notification.status = 'failed';
+            notification.errorDetails = `FCM error: ${fcmError.message}`;
+            await notification.save();
+            logger.error(`FCM error for notification ${notification._id}: ${fcmError.message}`);
+            failedCount++;
+          }
         } else {
           // L'utente non ha token FCM
-          notification.status = 'sent';
-          notification.sentAt = new Date();
-          notification.errorDetails = 'No FCM tokens available';
+          notification.status = 'pending'; // Mantieni in pending per futuro processo
+          notification.errorDetails = 'User has no FCM tokens';
           await notification.save();
-          successCount++;
+          logger.warn(`User ${notification.user._id} has no FCM tokens for notification delivery`);
         }
       } catch (error) {
         notification.status = 'failed';

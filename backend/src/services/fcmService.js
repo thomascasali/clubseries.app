@@ -36,11 +36,18 @@ const sendToDevice = async (token, notification, data = {}) => {
           aps: {
             contentAvailable: true
           }
+        },
+        headers: {
+          'apns-priority': '10'
         }
       },
       webpush: {
         headers: {
           Urgency: 'high'
+        },
+        notification: {
+          title: notification.title,
+          body: notification.body
         }
       }
     };
@@ -65,34 +72,99 @@ const sendToDevices = async (tokens, notification, data = {}) => {
   try {
     if (!tokens || tokens.length === 0) {
       logger.warn('No FCM tokens provided for sendToDevices');
-      return { successCount: 0, failureCount: 0 };
+      // Restituisce un oggetto simile a BatchResponse per coerenza
+      return { successCount: 0, failureCount: 0, responses: [] };
     }
 
-    const message = {
-      tokens,
-      notification,
-      data: convertToStringValues(data),
-      android: {
-        priority: 'high'
-      },
-      apns: {
-        payload: {
-          aps: {
-            contentAvailable: true
-          }
-        }
+    // Gestione limite di 500 token per chiamata
+    if (tokens.length > 500) {
+      logger.warn(`Attempting to send to ${tokens.length} tokens, but the limit is 500 per call. Processing in chunks.`);
+      
+      // Dividi l'array dei token in chunk da 500
+      const chunks = [];
+      for (let i = 0; i < tokens.length; i += 500) {
+        chunks.push(tokens.slice(i, i + 500));
       }
-    };
-
-    // Correzione: da admin.messaging.sendMulticast a admin.messaging().sendMulticast
-    const messaging = admin.messaging();
-    const response = await messaging.sendMulticast(message);
-    logger.info(`Sent notification to ${response.successCount} devices, failed: ${response.failureCount}`);
-    return response;
+      
+      // Traccia i risultati complessivi
+      let totalSuccessCount = 0;
+      let totalFailureCount = 0;
+      let allResponses = [];
+      
+      // Invia a ogni chunk separatamente
+      for (const chunk of chunks) {
+        const chunkResponse = await sendChunkToDevices(chunk, notification, data);
+        totalSuccessCount += chunkResponse.successCount;
+        totalFailureCount += chunkResponse.failureCount;
+        allResponses = allResponses.concat(chunkResponse.responses || []);
+      }
+      
+      return {
+        successCount: totalSuccessCount,
+        failureCount: totalFailureCount,
+        responses: allResponses
+      };
+    }
+    
+    // Se il numero di token è minore o uguale a 500, invia con una singola chiamata
+    return await sendChunkToDevices(tokens, notification, data);
   } catch (error) {
-    logger.error(`Error sending notification to multiple devices: ${error.message}`);
+    // Logga l'errore completo per il debug
+    logger.error(`Error sending multicast notification: ${error.message}`, { stack: error.stack });
+    // Rilancia l'errore per permettere al chiamante di gestirlo
     throw error;
   }
+};
+
+/**
+ * Funzione di supporto per inviare a un chunk di token
+ * @private
+ */
+const sendChunkToDevices = async (tokens, notification, data = {}) => {
+  // Crea un singolo oggetto MulticastMessage
+  const message = {
+    tokens: tokens, 
+    notification: notification,
+    data: convertToStringValues(data),
+    android: {
+      priority: 'high'
+    },
+    apns: {
+      payload: {
+        aps: {
+          'content-available': 1 
+        }
+      },
+      headers: {
+        'apns-priority': '10'
+      }
+    },
+    webpush: {
+      headers: {
+        Urgency: 'high'
+      },
+      notification: {
+        title: notification.title,
+        body: notification.body
+      }
+    }
+  };
+
+  const messaging = admin.messaging();
+  const response = await messaging.sendMulticast(message);
+
+  logger.info(`Sent multicast notification to ${tokens.length} tokens. Success: ${response.successCount}, Failure: ${response.failureCount}`);
+
+  // Logga gli errori per i token falliti
+  if (response.failureCount > 0) {
+    response.responses.forEach((resp, idx) => {
+      if (!resp.success) {
+        logger.error(`Failed to send to token ${tokens[idx].substring(0, 10)}... Error: ${resp.error ? resp.error.message : 'Unknown error'}`);
+      }
+    });
+  }
+
+  return response;
 };
 
 /**
@@ -107,7 +179,29 @@ const sendToTopic = async (topic, notification, data = {}) => {
     const message = {
       topic,
       notification,
-      data: convertToStringValues(data)
+      data: convertToStringValues(data),
+      android: {
+        priority: 'high'
+      },
+      apns: {
+        payload: {
+          aps: {
+            contentAvailable: true
+          }
+        },
+        headers: {
+          'apns-priority': '10'
+        }
+      },
+      webpush: {
+        headers: {
+          Urgency: 'high'
+        },
+        notification: {
+          title: notification.title,
+          body: notification.body
+        }
+      }
     };
 
     const response = await admin.messaging().send(message);
@@ -165,9 +259,11 @@ const unsubscribeFromTopic = async (tokens, topic) => {
  * @returns {object} - Oggetto con tutti i valori convertiti in stringhe
  */
 const convertToStringValues = (data) => {
+  if (!data) return {}; // Gestisce il caso in cui data sia null o undefined
   const result = {};
   Object.keys(data).forEach(key => {
-    result[key] = String(data[key]);
+    // Assicurati che il valore non sia null o undefined prima di convertirlo
+    result[key] = data[key] === null || data[key] === undefined ? '' : String(data[key]);
   });
   return result;
 };
@@ -175,7 +271,7 @@ const convertToStringValues = (data) => {
 module.exports = {
   sendToDevice,
   sendToDevices,
-  sendToTopic,
   subscribeToTopic,
-  unsubscribeFromTopic
+  unsubscribeFromTopic,
+  sendToTopic
 };

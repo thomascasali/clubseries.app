@@ -33,17 +33,6 @@ if (process.env.NODE_ENV === 'production') {
   // Inizializza il sync scheduler
   syncScheduler.initSyncScheduler();
   logger.info('Sync scheduler initialized');
-  
-  // Configura il job di elaborazione notifiche (ogni 3 minuti)
-  cron.schedule('*/3 * * * *', async () => {
-    try {
-      logger.info('Running scheduled notification processing');
-      await notificationService.processNotifications();
-    } catch (error) {
-      logger.error(`Error in notification processing cron job: ${error.message}`);
-    }
-  });
-  logger.info('Notification scheduler initialized');
 } else {
   logger.info('Schedulers not initialized in development mode');
 }

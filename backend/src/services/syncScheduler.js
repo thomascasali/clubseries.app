@@ -442,22 +442,33 @@ const initSyncScheduler = () => {
   cron.schedule('*/10 * * * *', async () => {
     try {
       await syncFromGoogleSheets();
+
+      // Invia le notifiche solo dopo la sincronizzazione
+      try {
+        logger.info('📣 Avvio elaborazione notifiche post-sincronizzazione');
+        await notificationService.processNotifications();
+      } catch (notifError) {
+        logger.error(`❌ Errore durante l'elaborazione delle notifiche: ${notifError.message}`);
+      }
+
     } catch (error) {
-      logger.error(`Unhandled error in syncFromGoogleSheets cron job: ${error.message}`);
+      logger.error(`Errore non gestito nella sincronizzazione con Google Sheets: ${error.message}`);
     }
   });
-  
+
   // Esegui subito la sincronizzazione all'avvio
   setTimeout(async () => {
     try {
-      logger.info('Running initial sync...');
+      logger.info('⏱️ Avvio sincronizzazione iniziale...');
       await syncFromGoogleSheets();
+      logger.info('📣 Avvio elaborazione notifiche post-sincronizzazione iniziale');
+      await notificationService.processNotifications();
     } catch (error) {
-      logger.error(`Error in initial sync: ${error.message}`);
+      logger.error(`Errore durante la sincronizzazione iniziale: ${error.message}`);
     }
-  }, 10000); // Attendi 10 secondi per assicurarsi che il database sia connesso
-  
-  logger.info('Sync scheduler initialized with 10-minute interval');
+  }, 10000);
+
+  logger.info('✅ Sync scheduler inizializzato con intervallo di 10 minuti');
 };
 
 module.exports = {
