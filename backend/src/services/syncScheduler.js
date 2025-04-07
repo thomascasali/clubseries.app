@@ -30,7 +30,13 @@ const determineChangeType = (newMatch, oldMatch) => {
   // Controlla se sono cambiati i risultati
   if (!arraysEqual(newMatch.officialScoreA, oldMatch.officialScoreA) || 
       !arraysEqual(newMatch.officialScoreB, oldMatch.officialScoreB) ||
-      newMatch.officialResult !== oldMatch.officialResult) return 'results_changed';
+      newMatch.officialResult !== oldMatch.officialResult) {
+    logger.info(`Risultati modificati per il match ${newMatch.matchId}: 
+      - Score A: ${JSON.stringify(oldMatch.officialScoreA)} → ${JSON.stringify(newMatch.officialScoreA)}
+      - Score B: ${JSON.stringify(oldMatch.officialScoreB)} → ${JSON.stringify(newMatch.officialScoreB)}
+      - Risultato: ${oldMatch.officialResult} → ${newMatch.officialResult}`);
+    return 'results_changed';
+  }
   
   // Controlla se è cambiato l'orario
   if (newMatch.time !== oldMatch.time) return 'time_changed';
@@ -126,13 +132,16 @@ const sendMatchNotifications = async (matches, isNew = false) => {
         // Determina il tipo di notifica e di cambiamento
         let notificationType = 'match_scheduled';
         const changeType = match._changeType || (isNew ? 'new_match' : 'other_change');
-        
+
         if (changeType === 'new_match') {
           notificationType = 'match_scheduled';
+          logger.info(`Creazione notifica per nuova partita: ${matchWithTeams.matchId}`);
         } else if (changeType === 'results_changed') {
           notificationType = 'result_updated';
+          logger.info(`Creazione notifica per risultati modificati: match ${matchWithTeams.matchId}, team ${matchWithTeams.teamA.name} vs ${matchWithTeams.teamB.name}`);
         } else if (['time_changed', 'court_changed', 'date_changed', 'other_change'].includes(changeType)) {
           notificationType = 'match_updated';
+          logger.info(`Creazione notifica per aggiornamento partita (${changeType}): ${matchWithTeams.matchId}`);
         }
         
         // Crea il messaggio della notifica
@@ -241,11 +250,18 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           message,
           status: 'pending'
         });
+        logger.info(`Notifica creata per utente ${user._id} e match ${matchWithTeams.matchId} (tipo: ${notificationType})`);
       }
     }
     
     // Processa le notifiche immediatamente
-    await notificationService.processNotifications();
+    try {
+      logger.info(`Avvio elaborazione notifiche per ${matches.length} partite`);
+      await notificationService.processNotifications();
+      logger.info(`Elaborazione notifiche completata`);
+    } catch (notifError) {
+      logger.error(`Errore durante l'elaborazione delle notifiche: ${notifError.message}`);
+    }
     
   } catch (error) {
     logger.error(`Error sending match notifications: ${error.message}`);

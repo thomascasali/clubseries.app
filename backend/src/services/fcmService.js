@@ -68,50 +68,85 @@ const sendToDevice = async (token, notification, data = {}) => {
  * @param {object} data - Dati aggiuntivi per la notifica
  * @returns {Promise<object>} - Risultato dell'invio in massa
  */
-const sendToDevices = async (tokens, notification, data = {}) => {
+const sendToDevices = async (tokens, notification, data = {}, userId = null) => {
   try {
     if (!tokens || tokens.length === 0) {
       logger.warn('No FCM tokens provided for sendToDevices');
-      // Restituisce un oggetto simile a BatchResponse per coerenza
-      return { successCount: 0, failureCount: 0, responses: [] };
+      return { successCount: 0, failureCount: 0 };
     }
 
-    // Gestione limite di 500 token per chiamata
-    if (tokens.length > 500) {
-      logger.warn(`Attempting to send to ${tokens.length} tokens, but the limit is 500 per call. Processing in chunks.`);
-      
-      // Dividi l'array dei token in chunk da 500
-      const chunks = [];
-      for (let i = 0; i < tokens.length; i += 500) {
-        chunks.push(tokens.slice(i, i + 500));
-      }
-      
-      // Traccia i risultati complessivi
-      let totalSuccessCount = 0;
-      let totalFailureCount = 0;
-      let allResponses = [];
-      
-      // Invia a ogni chunk separatamente
-      for (const chunk of chunks) {
-        const chunkResponse = await sendChunkToDevices(chunk, notification, data);
-        totalSuccessCount += chunkResponse.successCount;
-        totalFailureCount += chunkResponse.failureCount;
-        allResponses = allResponses.concat(chunkResponse.responses || []);
-      }
-      
-      return {
-        successCount: totalSuccessCount,
-        failureCount: totalFailureCount,
-        responses: allResponses
-      };
-    }
+    // Invia le notifiche individualmente a ciascun token
+    let successCount = 0;
+    let failureCount = 0;
+    const responses = [];
+    const invalidTokens = [];
+
+    // Converti i dati in stringhe una sola volta
+    const stringData = convertToStringValues(data);
     
-    // Se il numero di token è minore o uguale a 500, invia con una singola chiamata
-    return await sendChunkToDevices(tokens, notification, data);
+    // Invio sequenziale a ogni token
+    for (const token of tokens) {
+      try {
+        const message = {
+          token,
+          notification,
+          data: stringData,
+          android: {
+            priority: 'high'
+          },
+          apns: {
+            payload: {
+              aps: {
+                contentAvailable: true
+              }
+            }
+          },
+          webpush: {
+            headers: {
+              Urgency: 'high'
+            }
+          }
+        };
+
+        const response = await admin.messaging().send(message);
+        responses.push({ success: true, messageId: response });
+        successCount++;
+        logger.debug(`Sent notification to token: ${token.substring(0, 10)}...`);
+      } catch (tokenError) {
+        responses.push({ success: false, error: tokenError.message });
+        failureCount++;
+        
+        // Controlla se il token è invalido
+        if (tokenError.message.includes("Requested entity was not found") || 
+            tokenError.code === 'messaging/invalid-registration-token' ||
+            tokenError.code === 'messaging/registration-token-not-registered') {
+          invalidTokens.push(token);
+          logger.warn(`Invalid token detected: ${token.substring(0, 10)}...`);
+        }
+        
+        logger.error(`Error sending to token ${token.substring(0, 10)}...: ${tokenError.message}`);
+      }
+    }
+
+    // Se abbiamo un userId e ci sono token invalidi, li rimuoviamo dal database
+    if (userId && invalidTokens.length > 0) {
+      try {
+        const User = require('../models/User');
+        await User.findByIdAndUpdate(
+          userId,
+          { $pull: { fcmTokens: { $in: invalidTokens } } },
+          { new: true }
+        );
+        logger.info(`Removed ${invalidTokens.length} invalid tokens for user ${userId}`);
+      } catch (cleanupError) {
+        logger.error(`Error removing invalid tokens: ${cleanupError.message}`);
+      }
+    }
+
+    logger.info(`Sent notifications to ${successCount} devices, failed: ${failureCount}`);
+    return { successCount, failureCount, responses, invalidTokens };
   } catch (error) {
-    // Logga l'errore completo per il debug
-    logger.error(`Error sending multicast notification: ${error.message}`, { stack: error.stack });
-    // Rilancia l'errore per permettere al chiamante di gestirlo
+    logger.error(`Error sending notifications to devices: ${error.message}`, { stack: error.stack });
     throw error;
   }
 };

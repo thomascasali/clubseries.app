@@ -17,7 +17,7 @@ const NotificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['match_scheduled', 'match_updated', 'result_entered', 'result_confirmed', 'result_rejected'],
+    enum: ['match_scheduled', 'match_updated', 'result_entered', 'result_updated', 'result_confirmed', 'result_rejected'],
     required: true,
   },
   message: {
