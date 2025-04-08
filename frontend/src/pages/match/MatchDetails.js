@@ -17,6 +17,7 @@ import {
   SportsTennis as SportsIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
+import VolleyballIcon from '../../components/icons/VolleyballIcon';
 import { getMatchById, getMatches, submitMatchResult, confirmMatchResult } from '../../services/matchService';
 import { AuthContext } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -255,7 +256,7 @@ const loadMatchWithRelated = async () => {
           <Divider sx={{ my: 2 }} />
           
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <SportsIcon color="primary" sx={{ mr: 1 }} />
+            <VolleyballIcon color="primary" sx={{ mr: 1 }} />
             Dettaglio Partite
           </Typography>
           
