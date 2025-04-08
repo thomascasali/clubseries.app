@@ -1,98 +1,80 @@
 // frontend/src/utils/matchUtils.js
-/**
- * Utility functions for match-related operations
- */
+import { debugMatches } from './debug-matches';
 
-// Funzione migliorata per trovare le partite correlate
-// Funzione migliorata per trovare le partite correlate
 export const findRelatedMatches = (allMatches, currentMatch) => {
   if (!currentMatch || !currentMatch.teamA || !currentMatch.teamB) {
+    console.log('Current match is invalid', currentMatch);
     return { matchesA: [], matchesB: [], goldenSet: null };
   }
-
-  const teamAId = currentMatch.teamA._id;
-  const teamBId = currentMatch.teamB._id;
+  
+  // Estrai ID e nomi come stringhe per confronti più affidabili
+  const teamAId = currentMatch.teamA._id?.toString();
+  const teamBId = currentMatch.teamB._id?.toString();
   const teamAName = currentMatch.teamA.name;
   const teamBName = currentMatch.teamB.name;
-  const phase = currentMatch.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
   const category = currentMatch.category;
-
-  console.log('Finding related matches for:', { teamAId, teamBId, teamAName, teamBName, phase, category });
-  console.log('All matches count:', allMatches.length);
-
-  // Team A vs Team A matches
-  const matchesA = allMatches.filter(match => {
-    if (!match.teamA || !match.teamB || match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') return false;
-    
-    const matchPhase = match.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
-    
-    // Check if this is a match between Team A vs Team A
-    const isTeamAMatch = (
-      (match.teamA._id === teamAId || match.teamA.name === teamAName) && 
-      (match.teamB._id === teamAId || match.teamB.name === teamAName)
-    ) || (
-      (match.teamACode === 'A' && match.teamBCode === 'A') && 
-      (match.category === category && matchPhase === phase)
-    );
-
-    return isTeamAMatch;
+  
+  console.log('Finding related matches for:', { 
+    teamAId, teamBId, 
+    teamAName, teamBName, 
+    category,
+    phase: currentMatch.phase,
+    matchId: currentMatch.matchId
   });
-
-  console.log('Found Team A matches:', matchesA.length);
-
-  // Team B vs Team B matches
-  const matchesB = allMatches.filter(match => {
-    if (!match.teamA || !match.teamB || match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') return false;
-    
-    const matchPhase = match.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
-    
-    // Check if this is a match between Team B vs Team B
-    const isTeamBMatch = (
-      (match.teamA._id === teamBId || match.teamA.name === teamBName) && 
-      (match.teamB._id === teamBId || match.teamB.name === teamBName)
-    ) || (
-      (match.teamACode === 'B' && match.teamBCode === 'B') && 
-      (match.category === category && matchPhase === phase)
-    );
-
-    if (match.teamACode === 'B' || match.teamBCode === 'B') {
-      console.log('Checking potential Team B match:', {
-        matchId: match._id,
-        teamA: match.teamA.name,
-        teamB: match.teamB.name,
-        teamACode: match.teamACode,
-        teamBCode: match.teamBCode,
-        isTeamBMatch
-      });
-    }
-
-    return isTeamBMatch;
-  });
-
-  console.log('Found Team B matches:', matchesB.length);
-
-  // Trova il golden set associato
-  const goldenSet = allMatches.find(match => {
+  
+  // Filtra prima tutti i match della stessa categoria e con le stesse squadre (in qualsiasi ordine)
+  const relatedMatches = allMatches.filter(match => {
+    // Deve avere teamA e teamB validi
     if (!match.teamA || !match.teamB) return false;
-    if (!match.isGoldenSet && match.teamACode !== 'G' && match.teamBCode !== 'G') return false;
-
-    const matchPhase = match.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
     
-    // Check if this golden set involves the same teams
-    const sameTeams = (
-      (match.teamA._id === teamAId || match.teamA._id === teamBId || 
-       match.teamA.name === teamAName || match.teamA.name === teamBName) &&
-      (match.teamB._id === teamAId || match.teamB._id === teamBId || 
-       match.teamB.name === teamAName || match.teamB.name === teamBName)
-    ) || (
-      (match.category === category && matchPhase === phase)
-    );
-
-    return sameTeams;
+    // Verifica la categoria
+    if (match.category !== category) return false;
+    
+    // Verifica che le squadre coinvolte siano esattamente le stesse due squadre
+    // Controlla sia per nome che per ID
+    const matchTeamAName = match.teamA.name;
+    const matchTeamBName = match.teamB.name;
+    
+    const hasSameTeams = 
+      (matchTeamAName === teamAName || matchTeamAName === teamBName) &&
+      (matchTeamBName === teamAName || matchTeamBName === teamBName);
+    
+    return hasSameTeams;
   });
-
-  console.log('Found Golden Set:', goldenSet ? 'Yes' : 'No');
-
+  
+  // Escludi il match corrente
+  const filteredMatches = relatedMatches.filter(match => 
+    match._id.toString() !== currentMatch._id.toString()
+  );
+  
+  console.log(`Found ${filteredMatches.length} related matches`);
+  
+  // Adesso dividi per tipo
+  const matchesA = filteredMatches.filter(match => {
+    // Per i match di tipo A, verifica teamACode e teamBCode
+    const isTypeA = match.teamACode === 'A' && match.teamBCode === 'A';
+    
+    console.log(`Checking match ${match._id} for Team A:`, {
+      teamACode: match.teamACode, 
+      teamBCode: match.teamBCode,
+      isTypeA
+    });
+    
+    return isTypeA && !match.isGoldenSet;
+  });
+  
+  const matchesB = filteredMatches.filter(match => 
+    !match.isGoldenSet && match.teamACode === 'B' && match.teamBCode === 'B'
+  );
+  
+  const goldenSet = filteredMatches.find(match => 
+    match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G'
+  );
+  
+  console.log('Matches A found:', matchesA.length);
+  console.log('Matches B found:', matchesB.length);
+  console.log('Golden Set found:', goldenSet ? 'Yes' : 'No');
+  
   return { matchesA, matchesB, goldenSet };
 };
 
