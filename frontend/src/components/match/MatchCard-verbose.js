@@ -41,15 +41,33 @@ const MatchCard = ({
   return (
     <Card variant="outlined" sx={{ mb: 3, position: 'relative', bgcolor: cardColor }}>
       <CardContent>
-        <Typography variant="h6" gutterBottom color="primary" sx={{ml:-0.5}}>
+        <Typography variant="h6" gutterBottom color="primary">
           {cardTitle}
         </Typography>
-
+        
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6}>
+            <Typography variant="body1" mb={1}>
+              {match.teamA.name} vs {match.teamB.name}
+            </Typography>
             <Typography variant="body2" color="text.secondary">
-            <CalendarIcon fontSize="small" sx={{ mr: 1 }} /> {moment(match.date).format('LL')} • {match.time} - <PlaceIcon fontSize="small" sx={{ mr: 0 }} />  Campo {match.court} - {match.phase}
+              {match.phase}
+            </Typography>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Box display="flex" alignItems="center" justifyContent="flex-end" mb={1}>
+              <CalendarIcon fontSize="small" sx={{ mr: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                {moment(match.date).format('LL')} • {match.time}
               </Typography>
+            </Box>
+            <Box display="flex" alignItems="center" justifyContent="flex-end">
+              <PlaceIcon fontSize="small" sx={{ mr: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Campo {match.court}
+              </Typography>
+            </Box>
           </Grid>
         </Grid>
         
@@ -60,7 +78,7 @@ const MatchCard = ({
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
               <Typography variant="subtitle1">Risultato:</Typography>
               <Typography variant="h6" fontWeight="bold">
-              {!match.isGoldenSet ? setResult + " (": ""}{detailedScore} {match.isGoldenSet ? "" : ")"}
+                {detailedScore}
               </Typography>
             </Box>
             

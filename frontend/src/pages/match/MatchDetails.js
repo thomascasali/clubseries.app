@@ -5,7 +5,6 @@ import {
   Container,
   Typography,
   Box,
-  Grid,
   Paper,
   Divider,
   Button,
@@ -14,7 +13,6 @@ import {
   Chip,
 } from '@mui/material';
 import {
-  SportsTennis as SportsIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import VolleyballIcon from '../../components/icons/VolleyballIcon';
@@ -30,7 +28,7 @@ import ResultSubmitDialog from '../../components/match/ResultSubmitDialog';
 import ResultConfirmDialog from '../../components/match/ResultConfirmDialog';
 
 // Import delle utility estratte
-import { findRelatedMatches, determineOverallWinner } from '../../utils/matchUtils';
+import { findRelatedMatches, determineOverallWinner, debugMatches } from '../../utils/matchUtils';
 
 moment.locale('it');
 
@@ -66,42 +64,85 @@ const MatchDetails = () => {
   const [confirmAction, setConfirmAction] = useState(true);
 
   // Carica i dettagli della partita principale e trova le partite correlate
-const loadMatchWithRelated = async () => {
-  setLoading(true);
-  setError('');
-  try {
-    // Carica la partita corrente
-    const matchData = await getMatchById(id);
-    console.log('Loaded current match:', matchData);
-    setMatch(matchData);
+  const loadMatchWithRelated = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Carica la partita corrente
+      const matchData = await getMatchById(id);
+      console.log('Loaded current match:', matchData);
+      setMatch(matchData);
 
-    // Carica tutte le partite per trovare quelle correlate
-    const allMatches = await getMatches();
-    console.log('Loaded all matches:', allMatches.length);
-    
-    // Controlla che le partite abbiano le proprietà necessarie
-    const validMatches = allMatches.filter(m => m && m.teamA && m.teamB);
-    console.log('Valid matches:', validMatches.length);
-    
-    // Trova le partite correlate
-    const { matchesA, matchesB, goldenSet } = findRelatedMatches(validMatches, matchData);
-    
-    console.log('Related matches found:', {
-      matchesA: matchesA.length,
-      matchesB: matchesB.length,
-      goldenSet: goldenSet ? 'Yes' : 'No'
-    });
-    
-    setMatchesA(matchesA);
-    setMatchesB(matchesB);
-    setGoldenSet(goldenSet);
-  } catch (err) {
-    console.error('Error loading match details:', err);
-    setError(err.message || 'Errore durante il caricamento della partita');
-  } finally {
-    setLoading(false);
-  }
-};
+      if (!matchData || !matchData.teamA || !matchData.teamB) {
+        throw new Error('Dati della partita non validi o incompleti');
+      }
+
+      // Carica tutte le partite per trovare quelle correlate
+      const allMatches = await getMatches();
+      console.log('Loaded all matches:', allMatches.length);
+      
+      // Effettua debug per analizzare le partite disponibili
+      // debugMatches(allMatches, matchData);
+      
+      // Verifica che le partite abbiano le proprietà necessarie
+      const validMatches = allMatches.filter(m => m && m.teamA && m.teamB);
+      console.log('Valid matches:', validMatches.length);
+      
+      // Trova le partite correlate - utilizziamo teamA e teamB sia come ID che come nomi
+      const teamAId = matchData.teamA._id?.toString();
+      const teamBId = matchData.teamB._id?.toString();
+      const teamAName = matchData.teamA.name;
+      const teamBName = matchData.teamB.name;
+      
+      console.log('Looking for matches between:', { teamAName, teamBName });
+      
+      // Troviamo prima tutte le partite che hanno esattamente queste due squadre
+      const sameTeamsMatches = validMatches.filter(m => {
+        // Verifica che sia nella stessa categoria
+        if (m.category !== matchData.category) return false;
+        
+        // Verifica che entrambe le squadre siano presenti (in qualsiasi ordine)
+        const hasTeamA = m.teamA.name === teamAName || m.teamB.name === teamAName;
+        const hasTeamB = m.teamA.name === teamBName || m.teamB.name === teamBName;
+        
+        return hasTeamA && hasTeamB;
+      });
+      
+      console.log('Matches with same teams:', sameTeamsMatches.length);
+      
+      // Ora dividi per tipo (A, B, Golden)
+      const teamAMatches = sameTeamsMatches.filter(m => 
+        !m.isGoldenSet && 
+        m.teamACode === 'A' && 
+        m.teamBCode === 'A'
+      );
+      
+      const teamBMatches = sameTeamsMatches.filter(m => 
+        !m.isGoldenSet && 
+        m.teamACode === 'B' && 
+        m.teamBCode === 'B'
+      );
+      
+      const goldenSetMatch = sameTeamsMatches.find(m => 
+        m.isGoldenSet || 
+        m.teamACode === 'G' || 
+        m.teamBCode === 'G'
+      );
+      
+      console.log('Team A matches found:', teamAMatches.length);
+      console.log('Team B matches found:', teamBMatches.length);
+      console.log('Golden Set found:', goldenSetMatch ? 'Yes' : 'No');
+      
+      setMatchesA(teamAMatches);
+      setMatchesB(teamBMatches);
+      setGoldenSet(goldenSetMatch);
+    } catch (err) {
+      console.error('Error loading match details:', err);
+      setError(err.message || 'Errore durante il caricamento della partita');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handlers per i dialoghi
   const handleOpenResultDialog = (match, teamId) => {
@@ -181,7 +222,7 @@ const loadMatchWithRelated = async () => {
   useEffect(() => { loadMatchWithRelated(); }, [id]);
 
   // Determina il vincitore complessivo
-  const overallWinner = match && (matchesA.length > 0 || matchesB.length > 0) 
+  const overallWinner = match && (matchesA.length > 0 || matchesB.length > 0 || goldenSet) 
     ? determineOverallWinner(match, matchesA, matchesB, goldenSet) 
     : null;
 
@@ -242,32 +283,32 @@ const loadMatchWithRelated = async () => {
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" mb={2}>
             <Box>
-              <Typography variant="h4" gutterBottom>
-                {match.teamA.name} vs {match.teamB.name}
-              </Typography>
-              
               <Box display="flex" gap={1} flexWrap="wrap">
                 <Chip label={match.category} color="primary" />
                 <Chip label={match.phase.replace(/\s*-\s*[\w\d]+\s*vs\s*[\w\d]+$/, '').trim()} />
               </Box>
+              
+              <Typography variant="h5" gutterBottom sx={{ mt: 1 }}>
+                {match.teamA.name} vs {match.teamB.name}
+              </Typography>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <VolleyballIcon color="primary" sx={{ mr: 1 }} />
+                Dettaglio Sfida
+              </Typography>
+              
             </Box>
           </Box>
           
           <Divider sx={{ my: 2 }} />
-          
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <VolleyballIcon color="primary" sx={{ mr: 1 }} />
-            Dettaglio Partite
-          </Typography>
           
           {(matchesA.length > 0 || matchesB.length > 0 || goldenSet) ? (
             <Box>
               {/* Team A vs Team A */}
               {matchesA.length > 0 && (
                 <Box mb={3}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  {/*<Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                     🔵 Team A vs Team A
-                  </Typography>
+                  </Typography>*/}
                   {matchesA.map(match => (
                     <MatchCard 
                       key={match._id}
@@ -283,9 +324,9 @@ const loadMatchWithRelated = async () => {
               {/* Team B vs Team B */}
               {matchesB.length > 0 && (
                 <Box mb={3}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  {/*<Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                     🟠 Team B vs Team B
-                  </Typography>
+                  </Typography>*/}
                   {matchesB.map(match => (
                     <MatchCard 
                       key={match._id}
@@ -298,12 +339,12 @@ const loadMatchWithRelated = async () => {
                 </Box>
               )}
               
-              {/* Golden Set */}
-              {goldenSet && (
+              {/* Golden Set - mostralo solo se ha un punteggio valorizzato */}
+              {goldenSet && goldenSet.officialScoreA && goldenSet.officialScoreA.length > 0 && (
                 <Box mb={3}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  {/*<Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                     🏆 Golden Set
-                  </Typography>
+                  </Typography>*/}
                   <MatchCard 
                     match={goldenSet}
                     isGoldenSet={true}

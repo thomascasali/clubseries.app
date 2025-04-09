@@ -144,8 +144,8 @@ export const determineOverallWinner = (currentMatch, matchesA, matchesB, goldenS
 // Funzione per generare un titolo per la card della partita
 export const getMatchCardTitle = (match, teamType, isGoldenSet) => {
   if (isGoldenSet) return '🏆 Golden Set';
-  if (teamType === 'A') return `🔵 Team A vs Team A (${match.teamACode}-${match.teamBCode})`;
-  if (teamType === 'B') return `🟠 Team B vs Team B (${match.teamACode}-${match.teamBCode})`;
+  if (teamType === 'A') return `🔵 Team A vs Team A`;
+  if (teamType === 'B') return `🟠 Team B vs Team B`;
   return `Partita ${match.matchId || ''}`;
 };
 
