@@ -208,7 +208,7 @@ exports.createTeamNotification = async (teamId, type, message, matchId = null) =
         fullMessage: message
       };
       
-      await fcmService.sendToTopic(`team_${teamId}`, fcmNotification, data);
+      // await fcmService.sendToTopic(`team_${teamId}`, fcmNotification, data);  //commentato per evitare doppie notifiche
       logger.info(`FCM notification sent to topic team_${teamId}`);
     } catch (topicError) {
       logger.error(`Error sending FCM notification to topic: ${topicError.message}`);

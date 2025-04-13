@@ -1,5 +1,3 @@
-// nano src/components/dashboard/MatchUtils.js
-
 import moment from 'moment';
 import 'moment/locale/it';
 
@@ -79,353 +77,131 @@ export const determineGroupWinner = (group) => {
   return null; // Pareggio o risultato non chiaro
 };
 
-// Funzione unificata per raggruppare le partite correlate
-// Funzione unificata per raggruppare le partite correlate
 export const groupRelatedMatches = (matchesList) => {
-  if (!matchesList || matchesList.length === 0) {
-    console.log("Nessuna partita da raggruppare");
-    return [];
-  }
-  
-  console.log("Raggruppamento partite, totale:", matchesList.length);
-  
-  // Mappa per raggruppare le partite per combinazione di squadre e fase
-  const groupMap = {};
-  
-  // Prima identifichiamo tutti i Golden Set per poterli tracciare
-  const goldenSets = matchesList.filter(match => 
-    match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G'
-  );
-  
-  console.log(`Trovati ${goldenSets.length} Golden Set da associare ai gruppi`);
-  
-  // Gruppiamo le partite di Play-In per relatedMatchId
-  // Questo ci permette di collegarle anche se hanno nomi di fase diversi
-  const playInMatches = matchesList.filter(match => 
-    (match.sheetName === 'Play-In' || 
-     (match.phase && match.phase.toLowerCase().includes('play-in'))) &&
-    !match.isGoldenSet && match.teamACode !== 'G' && match.teamBCode !== 'G'
-  );
-  
-  console.log(`Trovate ${playInMatches.length} partite di Play-In da raggruppare`);
-  
-  // Creiamo un indice per relatedMatchId
-  const relatedMatchGroups = {};
-  playInMatches.forEach(match => {
-    if (match.relatedMatchId) {
-      if (!relatedMatchGroups[match.relatedMatchId]) {
-        relatedMatchGroups[match.relatedMatchId] = [];
-      }
-      relatedMatchGroups[match.relatedMatchId].push(match);
-    }
-  });
-  
-  console.log(`Identificati ${Object.keys(relatedMatchGroups).length} gruppi di Play-In basati su relatedMatchId`);
-  
-  // Prima passiamo tutti i match normali per costruire i gruppi
+  if (!matchesList || matchesList.length === 0) return [];
+
+  const matchesById = {};
+  const groupsById = {};
+
   matchesList.forEach(match => {
-    // Skip per i Golden Set, li gestiamo dopo
-    if (match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') {
-      return;
-    }
-    
-    if (!match.teamA || !match.teamB) {
-      console.log("Match saltato per mancanza di team:", match._id);
-      return;
-    }
-    
-    // Gestione speciale per partite Play-In
-    if (match.sheetName === 'Play-In' || (match.phase && match.phase.toLowerCase().includes('play-in'))) {
-      // Cerchiamo tutti i match con stesso relatedMatchId
-      if (match.relatedMatchId && relatedMatchGroups[match.relatedMatchId]) {
-        const relatedMatches = relatedMatchGroups[match.relatedMatchId];
-        
-        // Crea una chiave unica per questo gruppo Play-In
-        const playInKey = `play-in-${match.relatedMatchId}`;
-        
-        if (!groupMap[playInKey]) {
-          // Determina i nomi delle squadre dal primo match
-          const teamAName = match.teamA?.name?.replace(/\s+Team [ABG]$/, '') || '';
-          const teamBName = match.teamB?.name?.replace(/\s+Team [ABG]$/, '') || '';
-          
-          groupMap[playInKey] = {
-            id: playInKey,
-            category: match.category,
-            phase: 'Play-In',
-            date: match.date,
-            time: match.time,
-            court: match.court,
-            teamA: { name: teamAName, id: match.teamA?._id },
-            teamB: { name: teamBName, id: match.teamB?._id },
-            matches: [],
-            sheetName: match.sheetName
-          };
-        }
-        
-        // Aggiungiamo tutti i match collegati se non sono già presenti
-        relatedMatches.forEach(relatedMatch => {
-          // Verifica se questo match è già stato aggiunto
-          const alreadyAdded = groupMap[playInKey].matches.some(m => m._id === relatedMatch._id);
-          if (!alreadyAdded) {
-            groupMap[playInKey].matches.push(relatedMatch);
-          }
-        });
-        
-        // Ci assicuriamo di aggiungere anche il match corrente se non è già presente
-        const alreadyAdded = groupMap[playInKey].matches.some(m => m._id === match._id);
-        if (!alreadyAdded) {
-          groupMap[playInKey].matches.push(match);
-        }
-        
-        return;
-      }
-      
-      // Se non ha relatedMatchId o non abbiamo trovato altri match collegati,
-      // tentiamo un raggruppamento classico basato sui nomi delle squadre
-      const teamAName = match.teamA?.name?.replace(/\s+Team [ABG]$/, '') || '';
-      const teamBName = match.teamB?.name?.replace(/\s+Team [ABG]$/, '') || '';
-      
-      // Usa una chiave basata sui nomi delle squadre per raggruppare
-      const sortedTeamNames = [teamAName, teamBName].sort().join('-');
-      const playInKey = `play-in-${sortedTeamNames}-${match.category}`;
-      
-      if (!groupMap[playInKey]) {
-        groupMap[playInKey] = {
-          id: playInKey,
-          category: match.category,
-          phase: 'Play-In',
-          date: match.date,
-          time: match.time,
-          court: match.court,
-          teamA: { name: teamAName, id: match.teamA?._id },
-          teamB: { name: teamBName, id: match.teamB?._id },
+    matchesById[match._id] = match;
+  });
+
+  matchesList.forEach(match => {
+    let groupId;
+
+    if (match.isGoldenSet) {
+      groupId = match._id;
+
+      if (!groupsById[groupId]) {
+        groupsById[groupId] = {
+          id: groupId,
+          goldenSet: match,
           matches: [],
+          teamA: {
+            name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
+            id: match.teamA._id
+          },
+          teamB: {
+            name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
+            id: match.teamB._id
+          },
+          category: match.category,
+          phase: match.phase,
+          // data, ora e campo verranno presi dalla partita Team A vs Team A
+          date: null,
+          time: null,
+          court: null,
+          sheetName: match.sheetName
+        };
+      } else {
+        groupsById[groupId].goldenSet = match;
+      }
+    } else if (match.relatedMatchId) {
+      groupId = match.relatedMatchId;
+
+      if (!groupsById[groupId]) {
+        const relatedGolden = matchesById[groupId];
+        groupsById[groupId] = {
+          id: groupId,
+          goldenSet: relatedGolden?.isGoldenSet ? relatedGolden : null,
+          matches: [],
+          teamA: {
+            name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
+            id: match.teamA._id
+          },
+          teamB: {
+            name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
+            id: match.teamB._id
+          },
+          category: match.category,
+          phase: match.phase,
+          date: null,
+          time: null,
+          court: null,
           sheetName: match.sheetName
         };
       }
-      
-      const alreadyAdded = groupMap[playInKey].matches.some(m => m._id === match._id);
-      if (!alreadyAdded) {
-        groupMap[playInKey].matches.push(match);
+
+      groupsById[groupId].matches.push(match);
+
+      // Se è la partita Team A vs Team A, imposta come data/ora/campo di riferimento
+      if (match.teamACode === 'A' && match.teamBCode === 'A') {
+        groupsById[groupId].date = match.date;
+        groupsById[groupId].time = match.time;
+        groupsById[groupId].court = match.court;
       }
-      return;
-    }
-    
-    // Pattern delle partite Play-In: identificabili da matchId con suffisso -A, -B, -G 
-    // o phase che contiene 'Play-In'
-    const isPlayIn = 
-      (match.matchId && match.matchId.match(/-[ABG]$/)) || 
-      (match.phase && match.phase.toLowerCase().includes('play-in'));
-
-    if (isPlayIn) {
-      const teamAName = match.teamA?.name?.replace(/\s+Team [ABG]$/, '') || '';
-      const teamBName = match.teamB?.name?.replace(/\s+Team [ABG]$/, '') || '';
-      const basePhase = match.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
-
-      // Usa una chiave basata sui nomi delle squadre e la fase per raggruppare
-      const sortedTeamNames = [teamAName, teamBName].sort().join('-');
-      const playInKey = `play-in-${sortedTeamNames}-${basePhase}-${match.category}`;
-
-      if (!groupMap[playInKey]) {
-        groupMap[playInKey] = {
-          id: playInKey,
-          category: match.category,
-          phase: 'Play-In',
-          date: match.date,
-          time: match.time,
-          court: match.court,
-          teamA: { name: teamAName, id: match.teamA?._id },
-          teamB: { name: teamBName, id: match.teamB?._id },
-          matches: [],
-          sheetName: match.sheetName // Aggiungiamo il nome del foglio per tracciare l'origine
-        };
-      }
-
-      groupMap[playInKey].matches.push(match);
-      return;
-    }
-    
-    // Crea una chiave unica per ogni confronto, indipendente da Team A/B
-    const teamAName = match.teamA?.name?.replace(/\s+Team [ABG]$/, '') || '';
-    const teamBName = match.teamB?.name?.replace(/\s+Team [ABG]$/, '') || '';
-    
-    // Estrai la parte base della fase (senza Team A/B)
-    let basePhase = match.phase || '';
-    if (basePhase.includes(' - ') || basePhase.includes(' vs ')) {
-      basePhase = basePhase.split(/\s+-\s+|\s+vs\s+/)[0].trim();
-    }
-    
-    // Utilizza anche il foglio di provenienza (sheetName) per migliorare la precisione
-    const sheetNamePart = match.sheetName ? `-${match.sheetName}` : '';
-    
-    // Chiave univoca per questo gruppo di partite
-    // Ordina i nomi delle squadre alfabeticamente per evitare duplicazioni
-    const teamKey = teamAName.localeCompare(teamBName) < 0
-      ? `${teamAName}-${teamBName}` 
-      : `${teamBName}-${teamAName}`;
-    
-    const groupKey = `${teamKey}-${basePhase}${sheetNamePart}-${match.category}`;
-    
-    if (!groupMap[groupKey]) {
-      groupMap[groupKey] = {
-        id: groupKey,
+    } else {
+      groupId = `single-${match._id}`;
+      groupsById[groupId] = {
+        id: groupId,
+        matches: [match],
+        goldenSet: null,
+        teamA: {
+          name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
+          id: match.teamA._id
+        },
+        teamB: {
+          name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
+          id: match.teamB._id
+        },
         category: match.category,
-        phase: basePhase,
+        phase: match.phase,
         date: match.date,
         time: match.time,
         court: match.court,
-        teamA: { name: teamAName, id: match.teamA?._id },
-        teamB: { name: teamBName, id: match.teamB?._id },
-        matches: [],
         sheetName: match.sheetName
       };
     }
-    
-    // Assicuriamoci che la data più recente venga utilizzata per il gruppo
-    if (match.date && (!groupMap[groupKey].date || new Date(match.date) > new Date(groupMap[groupKey].date))) {
-      groupMap[groupKey].date = match.date;
-      groupMap[groupKey].time = match.time;
-      groupMap[groupKey].court = match.court;
-    }
-    
-    groupMap[groupKey].matches.push(match);
   });
-  
-  // Ora abbiniamo i Golden Set ai gruppi appropriati
-  goldenSets.forEach(goldenSet => {
-    if (!goldenSet.teamA || !goldenSet.teamB) {
-      console.log("Golden Set saltato per mancanza di team:", goldenSet._id);
-      return;
-    }
-    
-    // Se il Golden Set ha un relatedMatchId, verifichiamo prima se esiste già un gruppo Play-In
-    if (goldenSet.relatedMatchId) {
-      const playInKey = `play-in-${goldenSet.relatedMatchId}`;
-      if (groupMap[playInKey]) {
-        groupMap[playInKey].goldenSet = goldenSet;
-        console.log(`Golden Set ${goldenSet._id} abbinato al gruppo Play-In ${playInKey} tramite relatedMatchId`);
-        return;
-      }
-    }
-    
-    const teamAName = goldenSet.teamA?.name?.replace(/\s+Team [ABG]$/, '') || '';
-    const teamBName = goldenSet.teamB?.name?.replace(/\s+Team [ABG]$/, '') || '';
-    
-    // Ignora i Golden Set generici o senza team validi
-    if (teamAName === 'Golden Set Team A' || teamBName === 'Golden Set Team B' || 
-        !teamAName || !teamBName) {
-      return;
-    }
-    
-    // Cerchiamo il gruppo appropriato in più modi:
-    
-    // 1. Abbinamento basato sui nomi delle squadre (indipendentemente dall'ordine)
-    const candidateGroups = Object.entries(groupMap)
-      .filter(([key, group]) => 
-        (group.teamA.name === teamAName && group.teamB.name === teamBName) ||
-        (group.teamA.name === teamBName && group.teamB.name === teamAName)
-      )
-      .map(([key, group]) => ({ key, group }));
-    
-    if (candidateGroups.length > 0) {
-      // Se abbiamo più candidati, preferiamo quelli con lo stesso foglio (sheetName)
-      const sameSheetGroups = candidateGroups.filter(
-        ({ group }) => group.sheetName === goldenSet.sheetName
-      );
-      
-      const targetGroup = sameSheetGroups.length > 0 ? sameSheetGroups[0] : candidateGroups[0];
-      groupMap[targetGroup.key].goldenSet = goldenSet;
-      console.log(`Golden Set ${goldenSet._id} abbinato al gruppo ${targetGroup.key}`);
-    } else {
-      // 2. Se non è stato trovato un gruppo, cerchiamo in base alla fase e categoria
-      const basePhase = goldenSet.phase.replace(/ - [\w\d]+\s*vs\s*[\w\d]+$/, '').trim();
-      const sheetNamePart = goldenSet.sheetName ? `-${goldenSet.sheetName}` : '';
-      
-      // Ordina i nomi delle squadre per la chiave
-      const teamKey = teamAName.localeCompare(teamBName) < 0
-        ? `${teamAName}-${teamBName}` 
-        : `${teamBName}-${teamAName}`;
-      
-      // Prova diverse combinazioni di chiavi
-      const possibleKeys = [
-        `${teamKey}-${basePhase}${sheetNamePart}-${goldenSet.category}`, // Con sheetName
-        `${teamKey}-${basePhase}-${goldenSet.category}`,                // Senza sheetName
-        `play-in-${teamKey}-${basePhase}-${goldenSet.category}`         // Play-In
-      ];
-      
-      let foundKey = null;
-      for (const key of possibleKeys) {
-        if (groupMap[key]) {
-          foundKey = key;
-          break;
-        }
-      }
-      
-      if (foundKey) {
-        groupMap[foundKey].goldenSet = goldenSet;
-        console.log(`Golden Set ${goldenSet._id} abbinato al gruppo ${foundKey} per chiave`);
-      } else {
-        // 3. Ultimo tentativo: creiamo un nuovo gruppo solo per il Golden Set
-        // se proprio non troviamo corrispondenze
-        const newGroupKey = `golden-${teamKey}-${basePhase}-${goldenSet.category}`;
-        
-        groupMap[newGroupKey] = {
-          id: newGroupKey,
-          category: goldenSet.category,
-          phase: basePhase,
-          date: goldenSet.date,
-          time: goldenSet.time,
-          court: goldenSet.court,
-          teamA: { name: teamAName, id: goldenSet.teamA?._id },
-          teamB: { name: teamBName, id: goldenSet.teamB?._id },
-          matches: [],
-          goldenSet: goldenSet,
-          sheetName: goldenSet.sheetName
-        };
-        
-        console.log(`Creato nuovo gruppo ${newGroupKey} per Golden Set ${goldenSet._id}`);
+
+  // Filtro di sicurezza nel caso raro in cui non venga trovata la partita Team A vs Team A
+  Object.values(groupsById).forEach(group => {
+    if (!group.date) {
+      // prende la data più recente tra le partite normali, in mancanza della partita A vs A
+      const normalMatch = group.matches.find(m => !m.isGoldenSet);
+      if (normalMatch) {
+        group.date = normalMatch.date;
+        group.time = normalMatch.time;
+        group.court = normalMatch.court;
+      } else if (group.goldenSet) {
+        group.date = group.goldenSet.date;
+        group.time = group.goldenSet.time;
+        group.court = group.goldenSet.court;
       }
     }
   });
-  
-  // Ora verifichiamo la presenza dei Golden Set nei gruppi
-  const groupsWithGolden = Object.values(groupMap).filter(g => g.goldenSet).length;
-  console.log(`${groupsWithGolden} gruppi con Golden Set su ${Object.keys(groupMap).length} totali`);
-  
-  // Convertiamo la mappa in un array e lo ordiniamo per data e ora
-  const groups = Object.values(groupMap)
-    .filter(group => {
-      // Escludiamo i gruppi che hanno solo un Golden Set e nessun match normale
-      const isGoldenSetOnly = group.matches.length === 0 && group.goldenSet;
-      
-      if (isGoldenSetOnly) {
-        console.log(`Gruppo ${group.id} escluso: contiene solo Golden Set senza match associati`);
-      }
-      
-      return !isGoldenSetOnly;
-    })
-    .sort((a, b) => {
-      // Gestisce il caso in cui data o ora potrebbero essere mancanti
-      if (!a.date || !a.time) return 1;
-      if (!b.date || !b.time) return -1;
-      
-      try {
-        // Usa moment per parsare correttamente le date e confrontarle
-        const dateTimeA = moment(`${a.date}T${a.time}`);
-        const dateTimeB = moment(`${b.date}T${b.time}`);
-        
-        if (!dateTimeA.isValid()) return 1;
-        if (!dateTimeB.isValid()) return -1;
-        
-        return dateTimeA.diff(dateTimeB);
-      } catch (error) {
-        console.error("Errore nel confronto delle date:", error);
-        return 0;
-      }
-    });
-  
-  return groups;
+
+  // Converte il dizionario in array e ordina per data e ora
+  return Object.values(groupsById).sort((a, b) => {
+    const dateA = moment(`${a.date}T${a.time}`, moment.ISO_8601, true);
+    const dateB = moment(`${b.date}T${b.time}`, moment.ISO_8601, true);
+    if (!dateA.isValid()) return 1;
+    if (!dateB.isValid()) return -1;
+    return dateA - dateB;
+  });
 };
+
 
 // Filtra le partite in base alle ultime 2 ore e future
 export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, currentUser) => {
@@ -441,29 +217,20 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
     match.sheetName === 'Play-In' || 
     (match.phase && match.phase.toLowerCase().includes('play-in'))
   );
-  console.log(`Inizialmente ${initialPlayInMatches.length} partite Play-In`, 
-    initialPlayInMatches.map(m => ({
-      id: m._id, 
-      date: m.date, 
-      time: m.time,
-      teams: `${m.teamA?.name} vs ${m.teamB?.name}`
-    }))
-  );
+  console.log(`Inizialmente ${initialPlayInMatches.length} partite Play-In`);
   
   const now = moment();
   const twoHoursAgo = moment().subtract(2, 'hours');
   
   // Separiamo i Golden Set dal resto delle partite
-  const goldenSets = allMatches.filter(match => 
-    match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G'
-  );
+  const goldenSets = allMatches.filter(match => match.isGoldenSet);
   
   console.log(`Trovati ${goldenSets.length} Golden Set da preservare dal filtro temporale`);
   
   // Per ogni partita, controlliamo se è nelle ultime 2 ore o futura
   let relevantMatches = allMatches.filter(match => {
     // Se è un Golden Set, lo includiamo sempre
-    if (match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') {
+    if (match.isGoldenSet) {
       return true;
     }
     
@@ -487,9 +254,6 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
       if (isFutureDate) {
         console.log(`Play-In match ${match._id} incluso perché ha data futura: ${match.date}`);
         return true;
-      } else {
-        console.log(`Play-In match ${match._id} escluso perché ha data passata: ${match.date}`);
-        return false;
       }
     }
     
@@ -519,24 +283,8 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
     
     // Verifica se la partita è nelle ultime 2 ore o futura
     const isRelevant = matchDateTime.isAfter(twoHoursAgo);
-    if (!isRelevant) {
-      console.log(`Match ${match._id} escluso per data/ora troppo vecchia: ${match.date} ${match.time}`);
-    }
     return isRelevant;
   });
-  
-  // Log per debugging - vediamo quante partite Play-In rimangono
-  const remainingPlayInMatches = relevantMatches.filter(match => 
-    match.sheetName === 'Play-In' || 
-    (match.phase && match.phase.toLowerCase().includes('play-in'))
-  );
-  console.log(`Dopo filtro temporale: ${remainingPlayInMatches.length} partite Play-In`, 
-    remainingPlayInMatches.map(m => ({
-      id: m._id, 
-      date: m.date, 
-      time: m.time
-    }))
-  );
   
   console.log("Partite rilevanti dopo filtro temporale:", relevantMatches.length);
   
@@ -551,15 +299,31 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
       return isTeamASubscribed || isTeamBSubscribed;
     });
     
-    // Log per debugging - vediamo quante partite Play-In rimangono dopo filtro squadre
-    const finalPlayInMatches = relevantMatches.filter(match => 
-      match.sheetName === 'Play-In' || 
-      (match.phase && match.phase.toLowerCase().includes('play-in'))
-    );
-    console.log(`Dopo filtro squadre: ${finalPlayInMatches.length} partite Play-In`);
-    
     console.log("Partite dopo filtro squadre:", relevantMatches.length);
   }
   
   return relevantMatches;
 };
+
+export const filterRelevantGroups = (groups) => {
+  const now = moment();
+  const twoHoursAgo = moment().subtract(2, 'hours');
+
+  return groups.filter(group => {
+    if (!group.date || !group.time || group.time === 'N/A') {
+      console.log("Gruppo escluso per data/ora mancante:", group);
+      return false;
+    }
+
+    const matchDateTime = moment(`${group.date} ${group.time}`, 'YYYY-MM-DD HH:mm');
+    if (!matchDateTime.isValid()) {
+      console.log("Data non valida per gruppo:", group, `${group.date} ${group.time}`);
+      return false;
+    }
+
+    const isValid = matchDateTime.isAfter(twoHoursAgo);
+    console.log("Verifica data gruppo:", group, "Valido?", isValid, matchDateTime.format());
+    return isValid;
+  });
+};
+

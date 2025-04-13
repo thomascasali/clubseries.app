@@ -1,73 +1,123 @@
-// frontend/src/utils/matchUtils.js
+// frontend/src/utils/MatchUtils.js
 import { debugMatches } from './debug-matches';
 
+// Funzione principale per raggruppare i match in base alle relazioni
+export const groupMatchesByRelationship = (matches) => {
+  const groups = [];
+  const processed = new Set();
+
+  // Prima passiamo attraverso i Golden Sets, che fungono da "ancora" per i gruppi
+  matches.filter(match => match.isGoldenSet).forEach(goldenSet => {
+    if (processed.has(goldenSet._id)) return;
+
+    // Trova tutte le partite correlate a questo Golden Set
+    const relatedMatches = matches.filter(m => 
+      m.relatedMatchId === goldenSet._id || // Partite che puntano al Golden Set
+      goldenSet.relatedMatchId === m._id    // Partita a cui punta il Golden Set
+    );
+
+    // Crea un gruppo con il Golden Set e tutte le partite correlate
+    const group = [goldenSet, ...relatedMatches].filter(m => !processed.has(m._id));
+    
+    // Marca tutte le partite di questo gruppo come processate
+    group.forEach(match => processed.add(match._id));
+
+    if (group.length > 0) {
+      groups.push(group);
+    }
+  });
+
+  // Processa le partite restanti (quelle senza Golden Set)
+  matches.forEach(match => {
+    if (processed.has(match._id)) return;
+
+    // Se la partita ha un relatedMatchId ma non abbiamo trovato il Golden Set
+    // (potrebbe succedere se il Golden Set non è presente nell'array matches)
+    if (match.relatedMatchId) {
+      // Cerca altre partite con lo stesso relatedMatchId
+      const relatedMatches = matches.filter(m => 
+        !processed.has(m._id) && 
+        m.relatedMatchId === match.relatedMatchId
+      );
+      
+      const group = [match, ...relatedMatches];
+      group.forEach(m => processed.add(m._id));
+      
+      if (group.length > 0) {
+        groups.push(group);
+      }
+    } else {
+      // Partita singola senza relazioni
+      processed.add(match._id);
+      groups.push([match]);
+    }
+  });
+
+  return groups;
+};
+
+// Funzione per trovare le partite correlate a una partita specifica
 export const findRelatedMatches = (allMatches, currentMatch) => {
   if (!currentMatch || !currentMatch.teamA || !currentMatch.teamB) {
     console.log('Current match is invalid', currentMatch);
     return { matchesA: [], matchesB: [], goldenSet: null };
   }
   
-  // Estrai ID e nomi come stringhe per confronti più affidabili
-  const teamAId = currentMatch.teamA._id?.toString();
-  const teamBId = currentMatch.teamB._id?.toString();
-  const teamAName = currentMatch.teamA.name;
-  const teamBName = currentMatch.teamB.name;
-  const category = currentMatch.category;
+  // Se abbiamo relatedMatchId, utilizziamo direttamente quello
+  const relatedMatches = [];
   
-  console.log('Finding related matches for:', { 
-    teamAId, teamBId, 
-    teamAName, teamBName, 
-    category,
-    phase: currentMatch.phase,
-    matchId: currentMatch.matchId
-  });
+  if (currentMatch.isGoldenSet) {
+    // Se è un Golden Set, cerca partite che puntano ad esso
+    relatedMatches.push(
+      ...allMatches.filter(m => 
+        m._id !== currentMatch._id && 
+        m.relatedMatchId === currentMatch._id
+      )
+    );
+    
+    // Aggiungi anche partite a cui il Golden Set punta
+    if (currentMatch.relatedMatchId) {
+      const relatedMatch = allMatches.find(m => 
+        m._id === currentMatch.relatedMatchId
+      );
+      if (relatedMatch && !relatedMatches.some(m => m._id === relatedMatch._id)) {
+        relatedMatches.push(relatedMatch);
+      }
+    }
+  } else {
+    // Se è una partita normale, cerca il Golden Set e altre partite che puntano allo stesso Golden Set
+    if (currentMatch.relatedMatchId) {
+      // Trova il Golden Set
+      const goldenSet = allMatches.find(m => 
+        m._id === currentMatch.relatedMatchId
+      );
+      
+      if (goldenSet) {
+        relatedMatches.push(goldenSet);
+      }
+      
+      // Trova altre partite che puntano allo stesso Golden Set
+      relatedMatches.push(
+        ...allMatches.filter(m => 
+          m._id !== currentMatch._id && 
+          m.relatedMatchId === currentMatch.relatedMatchId
+        )
+      );
+    }
+  }
   
-  // Filtra prima tutti i match della stessa categoria e con le stesse squadre (in qualsiasi ordine)
-  const relatedMatches = allMatches.filter(match => {
-    // Deve avere teamA e teamB validi
-    if (!match.teamA || !match.teamB) return false;
-    
-    // Verifica la categoria
-    if (match.category !== category) return false;
-    
-    // Verifica che le squadre coinvolte siano esattamente le stesse due squadre
-    // Controlla sia per nome che per ID
-    const matchTeamAName = match.teamA.name;
-    const matchTeamBName = match.teamB.name;
-    
-    const hasSameTeams = 
-      (matchTeamAName === teamAName || matchTeamAName === teamBName) &&
-      (matchTeamBName === teamAName || matchTeamBName === teamBName);
-    
-    return hasSameTeams;
-  });
+  console.log(`Found ${relatedMatches.length} related matches`);
   
-  // Escludi il match corrente
-  const filteredMatches = relatedMatches.filter(match => 
-    match._id.toString() !== currentMatch._id.toString()
+  // Classifica le partite correlate
+  const matchesA = relatedMatches.filter(match => 
+    !match.isGoldenSet && match.teamACode === 'A' && match.teamBCode === 'A'
   );
   
-  console.log(`Found ${filteredMatches.length} related matches`);
-  
-  // Adesso dividi per tipo
-  const matchesA = filteredMatches.filter(match => {
-    // Per i match di tipo A, verifica teamACode e teamBCode
-    const isTypeA = match.teamACode === 'A' && match.teamBCode === 'A';
-    
-    console.log(`Checking match ${match._id} for Team A:`, {
-      teamACode: match.teamACode, 
-      teamBCode: match.teamBCode,
-      isTypeA
-    });
-    
-    return isTypeA && !match.isGoldenSet;
-  });
-  
-  const matchesB = filteredMatches.filter(match => 
+  const matchesB = relatedMatches.filter(match => 
     !match.isGoldenSet && match.teamACode === 'B' && match.teamBCode === 'B'
   );
   
-  const goldenSet = filteredMatches.find(match => 
+  const goldenSet = relatedMatches.find(match => 
     match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G'
   );
   
@@ -101,7 +151,6 @@ export const determineMatchWinner = (match) => {
 // Funzione per determinare il vincitore complessivo
 export const determineOverallWinner = (currentMatch, matchesA, matchesB, goldenSet) => {
   if (!currentMatch) return null;
-
   // Se c'è un golden set con risultato, questo è decisivo
   if (goldenSet && goldenSet.officialScoreA && goldenSet.officialScoreA.length > 0) {
     const scoreA = parseInt(goldenSet.officialScoreA[0]);

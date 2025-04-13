@@ -218,7 +218,7 @@ function arraysEqual(arr1, arr2) {
 
   // Collegamento match normali ai loro Golden Set
   logger.info(`Processing golden set relationships for ${goldenSetMap.size} golden sets`);
-  
+    
   for (const [baseMatchId, goldenSetId] of goldenSetMap.entries()) {
     // Trova i match normali correlati a questo Golden Set
     const relatedMatches = syncedMatches.filter(match => 
@@ -229,6 +229,19 @@ function arraysEqual(arr1, arr2) {
     if (relatedMatches.length > 0) {
       logger.info(`Found ${relatedMatches.length} matches related to Golden Set ${goldenSetId}`);
       
+      // Trova il golden set corrispondente
+      const goldenSet = syncedMatches.find(match => 
+        match._id.toString() === goldenSetId.toString()
+      );
+      
+      if (goldenSet) {
+        // Per il golden set, mettiamo come relatedMatchId l'ID del primo match normale correlato
+        goldenSet.relatedMatchId = relatedMatches[0]._id.toString();
+        await goldenSet.save();
+        logger.info(`Linked Golden Set ${goldenSetId} to match ${relatedMatches[0].matchId}`);
+      }
+      
+      // Collega i match normali al golden set
       for (const match of relatedMatches) {
         try {
           match.relatedMatchId = goldenSetId.toString();

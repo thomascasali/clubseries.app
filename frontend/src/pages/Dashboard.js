@@ -20,7 +20,7 @@ import MatchesSection from '../components/dashboard/MatchesSection';
 import TeamsSection from '../components/dashboard/TeamsSection';
 import NotificationsSection from '../components/dashboard/NotificationsSection';
 import SignupPrompt from '../components/dashboard/SignupPrompt';
-import { groupRelatedMatches, filterMatches } from '../components/dashboard/MatchUtils';
+import { groupRelatedMatches, filterRelevantGroups } from '../components/dashboard/MatchUtils';
 
 // Imposta la lingua italiana per moment
 moment.locale('it');
@@ -182,32 +182,41 @@ const Dashboard = () => {
 
   // Applica il filtro quando cambiano i dati o le preferenze
   useEffect(() => {
-    console.log("Dati cambiati, filtro partite");
-    const relevant = filterMatches(allMatches, subscribedTeams, showOnlySubscribed, currentUser);
-    setFilteredMatches(relevant);
-    
-    // Aggiorna le informazioni di debug
+    console.log("Dati cambiati, applico raggruppamento e filtro gruppi");
+  
+    // Step 1: Raggruppa sempre tutte le partite
+    const groupedAll = groupRelatedMatches(allMatches);
+  
+    // Step 2: Filtra per data (solo partite recenti o future)
+    const relevantGroups = filterRelevantGroups(groupedAll);
+  
+    // Step 3: Se necessario, applica ulteriore filtro per squadre sottoscritte
+    const finalGroups = currentUser && showOnlySubscribed && subscribedTeams.length > 0
+      ? relevantGroups.filter(group => 
+          subscribedTeams.some(team => 
+            team._id === group.teamA.id || team._id === group.teamB.id
+          ))
+      : relevantGroups;
+  
+    // Aggiorna lo stato con i gruppi finali filtrati
+    setGroupedMatches(finalGroups);
+  
+    // Debug info aggiornate
+    const goldenSetGroups = finalGroups.filter(g => g.goldenSet).length;
+  
     setDebugInfo(prev => ({
       ...prev,
-      relevantMatches: relevant.length,
+      totalMatches: allMatches.length,
+      groupedCount: finalGroups.length,
+      relevantMatches: finalGroups.reduce((acc, group) => acc + group.matches.length + (group.goldenSet ? 1 : 0), 0),
+      goldenSetsCount: goldenSetGroups,
       filterApplied: showOnlySubscribed && subscribedTeams.length > 0,
+      dataFetched: true,
       timeFiltered: true
     }));
-    
-    // Raggruppa le partite filtrate
-    const grouped = groupRelatedMatches(relevant);
-    
-    // Conta i Golden Set nei gruppi
-    const goldenSetGroups = grouped.filter(g => g.goldenSet).length;
-    console.log(`Raggruppati ${grouped.length} gruppi di partite, ${goldenSetGroups} con Golden Set`);
-    
-    setGroupedMatches(grouped);
-    setDebugInfo(prev => ({
-      ...prev,
-      groupedCount: grouped.length,
-      goldenSetsCount: goldenSetGroups
-    }));
+  
   }, [allMatches, showOnlySubscribed, subscribedTeams, currentUser]);
+  
 
   useEffect(() => {
     // Se l'utente ha squadre sottoscritte, attiva automaticamente il filtro
