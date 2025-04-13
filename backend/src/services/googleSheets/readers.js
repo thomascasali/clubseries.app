@@ -51,13 +51,14 @@ const readTeamsFromSheet = async (spreadsheetId) => {
  * @param {Array} validTeamNames - Nomi di team validi
  * @returns {Object} - Dati del match
  */
+// Modifica alla funzione parseMatchRow
 const parseMatchRow = (row, index, sheetName, category, validTeamNames) => {
   // Otteniamo l'ID del match
   const matchNumber = row[0]?.toString().trim() || `row-${index+1}`;
   const matchId = `${category}_${sheetName}_${matchNumber}`;
   
   // Data, ora, campo
-  const date = parseDate(row[1]) || new Date('2025-05-02'); // Default per le finali
+  const date = parseDate(row[1]) || new Date('2025-05-04'); // Default per le finali
   const time = row[2] || 'N/A';
   const court = row[3] || '';
   const phase = row[4] || sheetName;
@@ -70,30 +71,15 @@ const parseMatchRow = (row, index, sheetName, category, validTeamNames) => {
   const teamAInfo = findTeamInText(teamAText, validTeamNames);
   const teamBInfo = findTeamInText(teamBText, validTeamNames);
   
-  // CORREZIONE: Determiniamo se è un Golden Set SOLO in base al matchNumber
-  // Questo evita falsi positivi per Team A e Team B
+  // Determiniamo se è un Golden Set SOLO in base al matchNumber
   const isGoldenSet = matchNumber.toString().endsWith('G');
   
   // Se è un Golden Set, forziamo entrambi i teamCode a G
   const finalTeamACode = isGoldenSet ? 'G' : (teamAInfo.teamCode || matchNumber.toString().endsWith('A') ? 'A' : 'B');
   const finalTeamBCode = isGoldenSet ? 'G' : (teamBInfo.teamCode || matchNumber.toString().endsWith('A') ? 'A' : 'B');
   
-  // Leggiamo i punteggi (colonne G,H, I,J, K,L - indici 6,7, 8,9, 10,11)
-  const scores = [];
-  for (let col = 6; col <= 10; col += 2) {
-    if (row[col] && row[col+1]) {
-      scores.push([row[col], row[col+1]]);
-    }
-  }
-  
-  // Estraiamo i punteggi per A e B
-  const officialScoreA = scores.map(set => set[0]);
-  const officialScoreB = scores.map(set => set[1]);
-  
-  // Determiniamo il risultato
+  // Analizziamo il risultato esplicito nella colonna G (indice 6)
   let officialResult = 'pending';
-  
-  // Se è specificato un risultato esplicito
   if (row[6] && typeof row[6] === 'string') {
     const resultText = row[6].trim();
     if (resultText === '2-0' || resultText === '2-1') {
@@ -103,9 +89,22 @@ const parseMatchRow = (row, index, sheetName, category, validTeamNames) => {
     } else if (resultText === '1-1') {
       officialResult = 'draw';
     }
-  } 
-  // Altrimenti, per i Golden Set, determiniamo il vincitore in base al punteggio
-  else if (isGoldenSet && officialScoreA.length > 0 && officialScoreB.length > 0) {
+  }
+  
+  // Leggiamo i punteggi dei set dalle colonne H, J, L (indici 7, 9, 11)
+  const officialScoreA = [];
+  const officialScoreB = [];
+  
+  // Colonne per i punteggi dei set: H, J, L (indici 7, 9, 11)
+  for (let col = 7; col <= 11; col += 2) {
+    if (row[col] && row[col+1]) {
+      officialScoreA.push(row[col].toString().trim());
+      officialScoreB.push(row[col+1].toString().trim());
+    }
+  }
+  
+  // Per i Golden Set, determiniamo il vincitore in base al punteggio se non già definito
+  if (isGoldenSet && officialResult === 'pending' && officialScoreA.length > 0 && officialScoreB.length > 0) {
     const scoreA = parseInt(officialScoreA[0], 10);
     const scoreB = parseInt(officialScoreB[0], 10);
     
@@ -120,6 +119,11 @@ const parseMatchRow = (row, index, sheetName, category, validTeamNames) => {
   
   // Ricaviamo il baseMatchId
   const baseMatchId = matchNumber.replace(/[ABG]$/, '');
+  
+  // Log dettagliato per debug
+  if (isGoldenSet || officialScoreA.length > 0) {
+    logger.debug(`Match ${matchId}: Score A=${officialScoreA.join(',')}, Score B=${officialScoreB.join(',')}, Result=${officialResult}`);
+  }
   
   // Creiamo l'oggetto match
   return {
@@ -178,7 +182,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
     
     // Filtriamo i fogli che contengono partite (pool, play-in, draw schedule)
     const matchSheets = sheetInfo.data.sheets.filter(sheet => 
-      sheet.properties.title && ['pool', 'draw', 'play', 'sched', 'final'].some(keyword => 
+      sheet.properties.title && ['pool', 'draw', 'play'].some(keyword => 
         sheet.properties.title.toLowerCase().includes(keyword)
       )
     );
@@ -191,7 +195,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       logger.info(`Reading matches from sheet "${sheetName}"`);
       
       // Leggiamo un intervallo ampio per assicurarci di catturare tutti i dati
-      const rows = await readSheet(spreadsheetId, `'${sheetName}'!A1:L50`);
+      const rows = await readSheet(spreadsheetId, `'${sheetName}'!A1:L75`);
       
       // Processiamo tutte le righe che hanno un valore nella colonna A (matchNumber)
       for (let i = 0; i < rows.length; i++) {
