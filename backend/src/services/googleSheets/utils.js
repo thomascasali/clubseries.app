@@ -96,52 +96,39 @@ const parseDate = (dateStr) => {
  * @returns {Object} - Oggetto con nome del team trovato e codice team
  */
 const findTeamInText = (text, validTeamNames) => {
-  if (!text) return { teamName: null, teamCode: null };
-  
-  // Log per debug
-  logger.debug(`Processing team text: "${text}"`);
-  
-  // Verifica esplicita per il Golden Set
-  if (text && text.toLowerCase().includes('team g')) {
-    const cleanTeamName = text.replace(/\s+Team\s+G(?:\s+vs\s+|$)/i, '').trim();
-    //logger.info(`Golden Set detected for team: ${cleanTeamName}`);
-    
-    // Cerca il team nei validTeamNames
-    const foundTeam = validTeamNames.find(name => 
-      cleanTeamName === name || 
-      cleanTeamName.includes(name) || 
-      name.includes(cleanTeamName)
-    );
-    
-    return { 
-      teamName: foundTeam || cleanTeamName,
-      teamCode: 'G'
-    };
+  if (!text) return { teamName: '', teamCode: null };
+
+  const lower = text.toLowerCase().trim();
+
+  // Riconoscimento esplicito di Golden Set
+  if (lower.includes('team g') || lower === 'g') {
+    return { teamName: 'Golden Set Team', teamCode: 'G' };
   }
-  
-  // Estrai separatamente il nome del team e il codice team (A, B o G)
-  const teamCodeRegex = /\s+Team\s+([ABG])(?:\s+vs\s+|$)/i;
-  const codeMatch = text.match(teamCodeRegex);
-  const teamCode = codeMatch ? codeMatch[1] : null;
-  
-  // Rimuovi la parte "Team X" per ottenere solo il nome della squadra
-  const cleanTeamName = text.replace(/\s+Team\s+[ABG](?:\s+vs\s+|$)/i, '').trim();
-  
-  // Cerca il team nei validTeamNames (match esatto o parziale)
-  const foundTeam = validTeamNames.find(name => 
-    cleanTeamName === name || 
-    cleanTeamName.includes(name) || 
-    name.includes(cleanTeamName)
-  );
-  
-  // Log per debug
-  logger.debug(`Text: "${text}", Extracted: "${cleanTeamName}", Code: ${teamCode}, Found: "${foundTeam || null}"`);
-  
-  return { 
-    teamName: foundTeam || cleanTeamName,
-    teamCode 
+
+  // Cerca teamCode A o B
+  let teamCode = null;
+  if (/team\\s*a$/i.test(text) || /\\bA\\b/.test(text)) teamCode = 'A';
+  if (/team\\s*b$/i.test(text) || /\\bB\\b/.test(text)) teamCode = 'B';
+
+  // Rimuove eventuali suffissi tipo 'Team A', 'Team B' o '- A/B'
+  const cleaned = text
+    .replace(/[-–]?\\s*Team\\s*[ABG]$/i, '')
+    .replace(/\\bTeam\\b\\s*[ABG]/i, '')
+    .replace(/[-–]?\\s*[ABG]$/i, '')
+    .trim();
+
+  // Trova il nome squadra più simile (match completo o parziale)
+  let found = validTeamNames.find(name => name.toLowerCase() === cleaned.toLowerCase());
+  if (!found) {
+    found = validTeamNames.find(name => cleaned && name.toLowerCase().includes(cleaned.toLowerCase()));
+  }
+
+  return {
+    teamName: found || cleaned,
+    teamCode
   };
 };
+
 
 /**
  * Genera un ID univoco per un match

@@ -16,8 +16,6 @@
 │   │   │   ├── clubseriesfinals-firebase-adminsdk.json
 │   │   │   ├── database.js
 │   │   │   └── logger.js
-│   │   ├── {config,controllers,middleware,models,routes,services
-│   │   │   └── {google,notifications},utils}
 │   │   ├── controllers
 │   │   │   ├── authController.js
 │   │   │   ├── fcmController.js
@@ -83,21 +81,21 @@
 │   ├── package.json
 │   ├── package-lock.json
 │   ├── public
-│   │   ├── aibvc.ico
 │   │   ├── aibvc.png
+│   │   ├── clubseries.ico
+│   │   ├── clubseries.png
 │   │   ├── firebase-messaging-sw.js
 │   │   ├── index.html
 │   │   ├── manifest.json
 │   │   └── robots.txt
 │   ├── README.md
 │   └── src
-│       ├── aibvc.ico
-│       ├── aibvc.png
 │       ├── App.css
 │       ├── App.js
 │       ├── App.test.js
+│       ├── clubseries.ico
+│       ├── clubseries.png
 │       ├── components
-│       │   ├── auth
 │       │   ├── common
 │       │   │   ├── AdminRoute.js
 │       │   │   ├── LoadingScreen.js
@@ -106,6 +104,7 @@
 │       │   │   ├── DebugPanel.js
 │       │   │   ├── MatchesSection.js
 │       │   │   ├── MatchGroupCard.js
+│       │   │   ├── MatchGroupUtils.js
 │       │   │   ├── MatchUtils.js
 │       │   │   ├── NotificationsSection.js
 │       │   │   ├── SignupPrompt.js
@@ -114,6 +113,11 @@
 │       │   │   └── VolleyballIcon.js
 │       │   ├── layout
 │       │   │   └── MainLayout.js
+│       │   ├── match
+│       │   │   ├── MatchCard.js
+│       │   │   ├── MatchCard-verbose.js
+│       │   │   ├── ResultConfirmDialog.js
+│       │   │   └── ResultSubmitDialog.js
 │       │   └── notifications
 │       │       └── NotificationToggle.js
 │       ├── context
@@ -146,8 +150,10 @@
 │       │   └── userService.js
 │       ├── setupTests.js
 │       └── utils
-│           └── categoryUtils.js
+│           ├── categoryUtils.js
+│           ├── debug-matches.js
+│           └── matchUtils.js
 ├── .gitignore
 └── tree_clubseries.txt
 
-29 directories, 121 files
+27 directories, 129 files
