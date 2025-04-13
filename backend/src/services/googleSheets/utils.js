@@ -1,3 +1,5 @@
+// backend/src/services/googleSheets/utils.js
+
 const logger = require('../../config/logger');
 
 /**
@@ -90,6 +92,33 @@ const parseDate = (dateStr) => {
 };
 
 /**
+ * Estrae codice team (A, B, G) da un testo
+ * @param {string} text - Testo da analizzare
+ * @returns {string|null} - Codice team (A, B, G) o null se non trovato
+ */
+const extractTeamCode = (text) => {
+  if (!text) return null;
+  
+  // Caso speciale per Golden Set
+  if (text.toLowerCase().includes('team g')) return 'G';
+  
+  // Cerca pattern come "Team A", "Team B" o "-A", "-B" alla fine della stringa
+  const teamCodeRegex = /(?:team\s+([ABG])|\-([ABG]))(?:\s+|$)/i;
+  const match = text.match(teamCodeRegex);
+  
+  if (match) {
+    return (match[1] || match[2]).toUpperCase();
+  }
+  
+  // Se il match è esattamente "A" o "B"
+  if (/^[ABG]$/.test(text.trim())) {
+    return text.trim().toUpperCase();
+  }
+  
+  return null;
+};
+
+/**
  * Cerca un nome di team all'interno di un testo più lungo
  * @param {string} text - Testo completo (es. "ACTIVE BEACH VOLLEY DUE TORRI Team A")
  * @param {Array} validTeamNames - Array di nomi di team validi
@@ -97,38 +126,67 @@ const parseDate = (dateStr) => {
  */
 const findTeamInText = (text, validTeamNames) => {
   if (!text) return { teamName: '', teamCode: null };
-
-  const lower = text.toLowerCase().trim();
-
-  // Riconoscimento esplicito di Golden Set
-  if (lower.includes('team g') || lower === 'g') {
-    return { teamName: 'Golden Set Team', teamCode: 'G' };
+  
+  // Estrai il codice team
+  const teamCode = extractTeamCode(text);
+  
+  // Se è un Golden Set, gestiscilo in modo speciale
+  if (teamCode === 'G' || text.toLowerCase().includes('golden')) {
+    // Ripulisci la parte "Team G" o simili per trovare il nome del team
+    const cleanText = text
+      .replace(/\s+team\s+g/i, '')
+      .replace(/\s+g$|\-g$/i, '')
+      .trim();
+    
+    // Cerca corrispondenza nei nomi validi
+    const bestMatch = findBestTeamMatch(cleanText, validTeamNames);
+    
+    return {
+      teamName: bestMatch || cleanText,
+      teamCode: 'G'
+    };
   }
-
-  // Cerca teamCode A o B
-  let teamCode = null;
-  if (/team\\s*a$/i.test(text) || /\\bA\\b/.test(text)) teamCode = 'A';
-  if (/team\\s*b$/i.test(text) || /\\bB\\b/.test(text)) teamCode = 'B';
-
-  // Rimuove eventuali suffissi tipo 'Team A', 'Team B' o '- A/B'
-  const cleaned = text
-    .replace(/[-–]?\\s*Team\\s*[ABG]$/i, '')
-    .replace(/\\bTeam\\b\\s*[ABG]/i, '')
-    .replace(/[-–]?\\s*[ABG]$/i, '')
+  
+  // Per team normali, ripulisci il testo dal codice team
+  const cleanText = text
+    .replace(/\s+team\s+[ABG]/i, '')
+    .replace(/\s+[AB]$|\-[AB]$/i, '')
     .trim();
-
-  // Trova il nome squadra più simile (match completo o parziale)
-  let found = validTeamNames.find(name => name.toLowerCase() === cleaned.toLowerCase());
-  if (!found) {
-    found = validTeamNames.find(name => cleaned && name.toLowerCase().includes(cleaned.toLowerCase()));
-  }
-
+  
+  // Cerca corrispondenza nei nomi validi
+  const bestMatch = findBestTeamMatch(cleanText, validTeamNames);
+  
   return {
-    teamName: found || cleaned,
-    teamCode
+    teamName: bestMatch || cleanText,
+    teamCode: teamCode || (text.includes('A') ? 'A' : (text.includes('B') ? 'B' : null))
   };
 };
 
+/**
+ * Trova la migliore corrispondenza per un nome di team
+ * @param {string} teamText - Testo del team da cercare
+ * @param {Array} validTeamNames - Array di nomi di team validi
+ * @returns {string|null} - Nome del team trovato o null
+ */
+const findBestTeamMatch = (teamText, validTeamNames) => {
+  if (!teamText || !validTeamNames || !validTeamNames.length) return null;
+  
+  // 1. Prima cerca una corrispondenza esatta case-insensitive
+  const exactMatch = validTeamNames.find(name => 
+    name.toLowerCase() === teamText.toLowerCase()
+  );
+  if (exactMatch) return exactMatch;
+  
+  // 2. Poi cerca se il testo è contenuto in un nome valido o viceversa
+  const partialMatch = validTeamNames.find(name => 
+    name.toLowerCase().includes(teamText.toLowerCase()) ||
+    teamText.toLowerCase().includes(name.toLowerCase())
+  );
+  if (partialMatch) return partialMatch;
+  
+  // 3. Nessuna corrispondenza trovata
+  return null;
+};
 
 /**
  * Genera un ID univoco per un match
@@ -141,9 +199,38 @@ const generateMatchId = (category, sheetName, matchNumber) => {
   return `${category}_${sheetName}_${matchNumber}`;
 };
 
+/**
+ * Estrae il match base ID da un match ID, rimuovendo i suffissi A, B o G
+ * @param {string} matchId - ID completo del match (es. "Under_21_M_Pool_A_01A")
+ * @returns {string} - ID base senza il suffisso
+ */
+const extractBaseMatchId = (matchId) => {
+  if (!matchId) return '';
+  
+  // Caso 1: matchId termina con A, B o G
+  if (/[ABG]$/i.test(matchId)) {
+    return matchId.slice(0, -1);
+  }
+  
+  // Caso 2: matchId ha un numero seguito da A, B o G (es. "01A", "02B", "03G")
+  const regex = /(\d+)[ABG]$/i;
+  const match = matchId.match(regex);
+  if (match) {
+    const numberPart = match[1];
+    const indexOfNumber = matchId.lastIndexOf(numberPart);
+    return matchId.substring(0, indexOfNumber + numberPart.length);
+  }
+  
+  // Nessuna corrispondenza, ritorna l'ID originale
+  return matchId;
+};
+
 module.exports = {
   getSheetInfo,
   parseDate,
   findTeamInText,
-  generateMatchId
+  generateMatchId,
+  extractTeamCode,
+  findBestTeamMatch,
+  extractBaseMatchId
 };

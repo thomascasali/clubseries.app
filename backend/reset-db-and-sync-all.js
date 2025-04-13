@@ -33,6 +33,10 @@ async function resetDbAndSyncAll() {
     // Elimina tutti i match
     const deleteMatchesResult = await Match.deleteMany({});
     console.log(`✅ Eliminati ${deleteMatchesResult.deletedCount} match dal database`);
+
+    // Elimina tutti i team
+    const deleteTeamsResult = await Team.deleteMany({});
+    console.log(`✅ Eliminati ${deleteTeamsResult.deletedCount} team dal database`);
     
     // Elimina i dati di tracking
     const deleteTrackingResult = await SheetTracking.deleteMany({});
