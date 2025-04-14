@@ -20,7 +20,7 @@ const MatchSchema = new mongoose.Schema({
   },
   court: {
     type: String,
-    required: true,
+    required: function() {return !this.isGoldenSet;},
   },
   teamA: {
     type: mongoose.Schema.Types.ObjectId,

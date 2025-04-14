@@ -75,8 +75,28 @@ const parseMatchRow = (row, index, sheetName, category, validTeamNames) => {
   const isGoldenSet = matchNumber.toString().endsWith('G');
   
   // Se è un Golden Set, forziamo entrambi i teamCode a G
-  const finalTeamACode = isGoldenSet ? 'G' : (teamAInfo.teamCode || matchNumber.toString().endsWith('A') ? 'A' : 'B');
-  const finalTeamBCode = isGoldenSet ? 'G' : (teamBInfo.teamCode || matchNumber.toString().endsWith('A') ? 'A' : 'B');
+  const matchSuffix = matchNumber.toString().match(/[ABG]$/)?.[0];
+
+  // Se abbiamo un suffisso A/B/G, entrambi i team devono avere lo stesso codice
+  let finalTeamACode, finalTeamBCode;
+
+  if (isGoldenSet || matchSuffix === 'G') {
+    // Golden Set: entrambi i team hanno codice G
+    finalTeamACode = 'G';
+    finalTeamBCode = 'G';
+  } else if (matchSuffix === 'A') {
+    // Match A: entrambi i team hanno codice A
+    finalTeamACode = 'A';
+    finalTeamBCode = 'A';
+  } else if (matchSuffix === 'B') {
+    // Match B: entrambi i team hanno codice B
+    finalTeamACode = 'B';
+    finalTeamBCode = 'B';
+  } else {
+    // Fallback ai codici rilevati o default A
+    finalTeamACode = teamAInfo.teamCode || 'A';
+    finalTeamBCode = teamBInfo.teamCode || 'A';
+  }
   
   // Analizziamo il risultato esplicito nella colonna G (indice 6)
   let officialResult = 'pending';
@@ -195,7 +215,7 @@ const readMatchesFromSheet = async (spreadsheetId, category) => {
       logger.info(`Reading matches from sheet "${sheetName}"`);
       
       // Leggiamo un intervallo ampio per assicurarci di catturare tutti i dati
-      const rows = await readSheet(spreadsheetId, `'${sheetName}'!A1:L75`);
+      const rows = await readSheet(spreadsheetId, `'${sheetName}'!A1:M75`);
       
       // Processiamo tutte le righe che hanno un valore nella colonna A (matchNumber)
       for (let i = 0; i < rows.length; i++) {

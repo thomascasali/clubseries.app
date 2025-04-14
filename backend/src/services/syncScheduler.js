@@ -441,6 +441,12 @@ const syncFromGoogleSheets = async () => {
       }
       
       successCount++;
+
+      // Aggiungiamo un ritardo di 5 secondi tra una categoria e l'altra
+      if (category !== CATEGORIES[CATEGORIES.length - 1]) {
+        logger.info(`Waiting 5 seconds before syncing next category...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     } catch (error) {
       logger.error(`Error syncing category ${category} from Google Sheets: ${error.message}`);
       errorCount++;

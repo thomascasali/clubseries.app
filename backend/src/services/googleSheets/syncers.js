@@ -66,14 +66,27 @@ const syncTeamsFromSheet = async (spreadsheetId, category, Team) => {
 const isMatchChanged = (existingMatch, newMatch) => {
   if (!existingMatch) return true;
   
+  // Funzione di supporto per confrontare array
+  const arraysEqual = (arr1, arr2) => {
+    if (!arr1 && !arr2) return true;
+    if (!arr1 || !arr2) return false;
+    if (arr1.length !== arr2.length) return false;
+    
+    for (let i = 0; i < arr1.length; i++) {
+      if (arr1[i] !== arr2[i]) return false;
+    }
+    
+    return true;
+  };
+  
   // Verifica cambiamenti nei campi principali
   return (
     existingMatch.date?.toISOString() !== newMatch.date?.toISOString() ||
     existingMatch.time !== newMatch.time ||
     existingMatch.court !== newMatch.court ||
     existingMatch.phase !== newMatch.phase ||
-    JSON.stringify(existingMatch.officialScoreA) !== JSON.stringify(newMatch.officialScoreA) ||
-    JSON.stringify(existingMatch.officialScoreB) !== JSON.stringify(newMatch.officialScoreB) ||
+    !arraysEqual(existingMatch.officialScoreA, newMatch.officialScoreA) ||
+    !arraysEqual(existingMatch.officialScoreB, newMatch.officialScoreB) ||
     existingMatch.officialResult !== newMatch.officialResult
   );
 };
@@ -135,44 +148,69 @@ const syncMatchesFromSheet = async (spreadsheetId, category, Match, Team) => {
           continue;
         }
         
-        // Prepariamo i dati per l'aggiornamento
-        const updateData = {
-          phase: matchData.phase,
-          date: matchData.date,
-          time: matchData.time,
-          court: matchData.court,
-          teamA: teamA._id,
-          teamB: teamB._id,
-          teamACode: matchData.teamACode,
-          teamBCode: matchData.teamBCode,
-          isGoldenSet: matchData.isGoldenSet,
-          spreadsheetRow: matchData.spreadsheetRow,
-          sheetName: matchData.sheetName,
-          officialScoreA: matchData.officialScoreA,
-          officialScoreB: matchData.officialScoreB,
-          officialResult: matchData.officialResult,
-          category: category,
-          baseMatchId: matchData.baseMatchId
-        };
-        
         // Verifichiamo se il match esiste già
         const existingMatch = await Match.findOne({ matchId: matchData.matchId });
         
-        // Aggiorniamo solo se ci sono cambiamenti o se il match non esiste
-        if (!existingMatch || isMatchChanged(existingMatch, updateData)) {
-          // Aggiorniamo o creiamo il match
-          const match = await Match.findOneAndUpdate(
-            { matchId: matchData.matchId },
-            updateData,
-            { new: true, upsert: true, setDefaultsOnInsert: true }
-          );
+        if (!existingMatch) {
+          // Per i nuovi match, usiamo tutti i dati inclusi i codici
+          const newMatchData = {
+            matchId: matchData.matchId,
+            phase: matchData.phase,
+            date: matchData.date,
+            time: matchData.time,
+            court: matchData.court,
+            teamA: teamA._id,
+            teamB: teamB._id,
+            teamACode: matchData.teamACode,
+            teamBCode: matchData.teamBCode,
+            isGoldenSet: matchData.isGoldenSet,
+            spreadsheetRow: matchData.spreadsheetRow,
+            sheetName: matchData.sheetName,
+            officialScoreA: matchData.officialScoreA,
+            officialScoreB: matchData.officialScoreB,
+            officialResult: matchData.officialResult,
+            category: category,
+            baseMatchId: matchData.baseMatchId
+          };
           
+          // Creiamo il nuovo match
+          const match = await Match.create(newMatchData);
           syncedMatchesMap.set(matchData.matchId, match);
-          
-          logger.info(`Synced ${matchData.isGoldenSet ? 'Golden Set' : 'match'}: ${match.matchId}`);
+          logger.info(`Created new ${matchData.isGoldenSet ? 'Golden Set' : 'match'}: ${match.matchId}`);
         } else {
-          // Se non ci sono cambiamenti, aggiungiamo comunque il match all'array dei sincronizzati
-          syncedMatchesMap.set(matchData.matchId, existingMatch);
+          // Per gli aggiornamenti, escludiamo i codici dei team per preservare quelli originali
+          const updateData = {
+            phase: matchData.phase,
+            date: matchData.date,
+            time: matchData.time,
+            court: matchData.court,
+            teamA: teamA._id,
+            teamB: teamB._id,
+            isGoldenSet: matchData.isGoldenSet,
+            spreadsheetRow: matchData.spreadsheetRow,
+            sheetName: matchData.sheetName,
+            officialScoreA: matchData.officialScoreA,
+            officialScoreB: matchData.officialScoreB,
+            officialResult: matchData.officialResult,
+            category: category,
+            baseMatchId: matchData.baseMatchId
+            // teamACode e teamBCode sono deliberatamente omessi
+          };
+          
+          // Aggiorniamo solo se ci sono cambiamenti
+          if (isMatchChanged(existingMatch, updateData)) {
+            const match = await Match.findByIdAndUpdate(
+              existingMatch._id,
+              updateData,
+              { new: true }
+            );
+            
+            syncedMatchesMap.set(matchData.matchId, match);
+            logger.info(`Updated ${matchData.isGoldenSet ? 'Golden Set' : 'match'}: ${match.matchId}`);
+          } else {
+            // Se non ci sono cambiamenti, aggiungiamo comunque il match all'array dei sincronizzati
+            syncedMatchesMap.set(matchData.matchId, existingMatch);
+          }
         }
       } catch (error) {
         logger.error(`Error syncing match ${matchData.matchId}: ${error.message}`);
