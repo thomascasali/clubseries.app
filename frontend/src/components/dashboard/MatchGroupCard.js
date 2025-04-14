@@ -14,7 +14,7 @@ import {
 import moment from 'moment';
 import 'moment/locale/it';
 // Assicurati che questo import punti al file MatchGroupUtils.js finale!
-import { calculateSetResult, formatDetailedScore, determineGroupWinner } from './MatchGroupUtils';
+import { calculateSetResult, formatDetailedScore, determineGroupWinner } from './MatchUtils';
 import { getCategoryChipStyles } from '../../utils/categoryUtils';
 
 const MatchGroupCard = ({ group }) => {
@@ -36,16 +36,43 @@ const MatchGroupCard = ({ group }) => {
         group.goldenSet.officialScoreB?.[0] === '0'); // Ignora 0-0 nel golden set
 
   // Calcola se la partita è recente (ultime 2 ore)
-  const matchDateTime = group?.date && group.time ? moment(`${group.date}T${group.time}`) : null;
+  let matchDateTime = null;
+  if (group?.date) {
+    try {
+      // Prova diversi formati per la data
+      if (typeof group.date === 'string') {
+        // Se la data è già nel formato ISO, usala direttamente
+        if (group.date.includes('T')) {
+          matchDateTime = moment(group.date);
+        } else {
+          // Altrimenti combinala con l'ora
+          matchDateTime = moment(`${group.date}T${group.time || '00:00'}`);
+        }
+      } else if (group.date instanceof Date) {
+        // Se è un oggetto Date, convertiamolo
+        matchDateTime = moment(group.date);
+      }
+      
+      //console.log('Match DateTime created:', matchDateTime?.format(), 'Valid:', matchDateTime?.isValid());
+    } catch (e) {
+      console.error('Error creating matchDateTime:', e);
+    }
+  }
+  
   const isRecent = matchDateTime?.isValid() &&
                    matchDateTime.isBefore(moment()) &&
                    matchDateTime.isAfter(moment().subtract(2, 'hours'));
 
-  // Fallback per dati mancanti
   const categoryLabel = group?.category || 'N/A';
-  // *** USA displayPhase INVECE di phase ***
-  const phaseLabel = group?.displayPhase || 'N/A';
-  const dateLabel = matchDateTime?.isValid() ? matchDateTime.format('DD MMMM') : 'Data N/D';
+  // Flessibilità nel trovare la fase corretta
+  const phaseLabel = group?.displayPhase || group?.phase || 'N/A';
+  // Verifica se il matchDateTime è valido
+  //console.log('Match Phase:', group?.displayPhase);
+  const dateLabel = group.date ? 
+                  moment(group.date).isValid() ? 
+                  moment(group.date).format('D MMMM') : 
+                  `Data: ${group.date}` : 
+                  'Data N/D';
   const timeLabel = group?.time || 'Ora N/D';
   const courtLabel = group?.court || 'N/D';
   const teamAName = group?.teamA?.name || 'Team A N/D';
@@ -61,7 +88,7 @@ const MatchGroupCard = ({ group }) => {
         backgroundColor: isRecent ? '#fff8e1' : 'white'
       }}
     >
-      <CardContent sx={{ flexGrow: 1, pb: 1, minWidth: 440}}>
+      <CardContent sx={{ flexGrow: 1, pb: 1, minWidth: {xs:300, sm:350}}}>
         <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           {/* Chip Categoria */}
           <Chip
@@ -169,7 +196,7 @@ const MatchGroupCard = ({ group }) => {
           <Box sx={{
               mt: 'auto', // Spinge in basso se c'è spazio
               pt: 1, borderTop: '1px solid #eee',
-              backgroundColor: '#e8f5e9', // Verde chiaro
+              backgroundColor: '#57da62', // Verde chiaro
               mx: -2, mb: -1, px: 2, py: 0.5, // Occupa tutta larghezza e aggiusta padding
               borderBottomLeftRadius: '4px', borderBottomRightRadius: '4px' // Arrotonda angoli bassi
           }}>

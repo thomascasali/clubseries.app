@@ -1,164 +1,154 @@
 // src/pages/Matches.js
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   Container, Typography, Box, Grid, FormControl, InputLabel,
   Select, MenuItem, TextField, CircularProgress, Alert,
-  Paper, Tabs, Tab, Button // Rimosso Card, CardContent, CardActions, Chip qui
+  Paper, Tabs, Tab, Button, FormControlLabel, Switch
 } from '@mui/material';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
-import { getMatches } from '../services/matchService'; // Assumi esista
-import { getTeams } from '../services/teamService';   // Assumi esista
-// *** IMPORTA LE UTILS CORRETTE DAL FILE FINALE ***
+import { getMatches } from '../services/matchService'; 
+import { getTeams } from '../services/teamService';   
+import { getSubscribedTeams } from '../services/userService';
 import {
   groupRelatedMatches,
-  filterMatches, // Usiamo questa per tempo/sottoscrizioni
-  // Non importiamo più calculateSetResult, formatDetailedScore, determineGroupWinner qui
-} from '../components/dashboard/MatchGroupUtils'; // Assicurati che il path sia corretto!
-import MatchGroupCard from '../components/dashboard/MatchGroupCard'; // Importa la card aggiornata
+  filterMatches
+} from '../components/dashboard/MatchUtils'; 
+import MatchGroupCard from '../components/dashboard/MatchGroupCard';
+import { AuthContext } from '../context/AuthContext';
 import moment from 'moment';
 import 'moment/locale/it';
 
 moment.locale('it');
 
+// Lista categorie del torneo
+const categories = [
+  'Serie A Femminile',
+  'Serie B Femminile',
+  'Serie A Maschile',
+  'Serie B Maschile',
+  'Eccellenza F',
+  'Eccellenza M',
+  'Amatoriale F',
+  'Amatoriale M',
+  'Over 35 F',
+  'Over 40 F',
+  'Over 43 M',
+  'Over 50 M',
+  'Under 21 F',
+  'Under 21 M'
+];
+
 const Matches = () => {
   // --- State ---
-  const [allFetchedMatches, setAllFetchedMatches] = useState([]); // Tutte le partite dal backend
-  const [filteredMatches, setFilteredMatches] = useState([]);   // Partite filtrate (UI + tempo/subs)
-  const [groupedMatches, setGroupedMatches] = useState([]);   // Partite filtrate e RAGGRUPPATE per display
+  const [allFetchedMatches, setAllFetchedMatches] = useState([]);
+  const [filteredMatches, setFilteredMatches] = useState([]);
+  const [groupedMatches, setGroupedMatches] = useState([]);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [tabValue, setTabValue] = useState(0); // 0: Oggi, 1: Future, 2: Completate
+  const [tabValue, setTabValue] = useState(0);
   const [filters, setFilters] = useState({
-    // Usa null per DatePicker se vuoi che sia vuoto all'inizio
-    date: moment(), // Data predefinita per "Oggi"
+    date: moment(),
     category: '',
     team: '',
   });
 
-  // TODO: Gestire stato utente e squadre sottoscritte se necessario per filterMatches
-  const [currentUser, setCurrentUser] = useState(null); // Esempio
-  const [subscribedTeams, setSubscribedTeams] = useState([]); // Esempio
-  const [showOnlySubscribed, setShowOnlySubscribed] = useState(false); // Esempio
+  // Usa il contesto di autenticazione
+  const { currentUser } = useContext(AuthContext) || { currentUser: null };
+  const [subscribedTeams, setSubscribedTeams] = useState([]);
+  const [showOnlySubscribed, setShowOnlySubscribed] = useState(false);
 
-
-  // --- Categorie e Fetch Teams ---
-  const categories = [ /* ... lista categorie ... */ ]; // Mantieni o carica dinamicamente
+  // --- Fetch Teams e Squadre Sottoscritte ---
   useEffect(() => {
-    const loadTeams = async () => {
+    const loadTeamsAndSubscriptions = async () => {
       try {
+        // Carica tutti i team
         const fetchedTeams = await getTeams();
         setTeams(fetchedTeams || []);
+        
+        // Carica squadre sottoscritte se utente autenticato
+        if (currentUser) {
+          const userTeams = await getSubscribedTeams();
+          setSubscribedTeams(userTeams || []);
+        }
       } catch (err) {
         console.error('Error loading teams:', err);
-        // Potresti voler mostrare un errore specifico per i team
       }
     };
-    loadTeams();
-    // TODO: Carica currentUser e subscribedTeams se necessario
-  }, []);
+    
+    loadTeamsAndSubscriptions();
+  }, [currentUser]);
 
-
-  // --- Fetch Partite Iniziale (o quando cambiano filtri/tab) ---
+  // --- Fetch Partite ---
   const loadMatches = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      // Fetch TUTTE le partite o usa filtri backend minimali se necessario per performance.
-      // Evita filtri backend troppo specifici (come la data esatta) se interferiscono
-      // con la logica di filterMatches (che considera le 2 ore precedenti, etc.).
-      const backendFilters = {}; // Es: potresti filtrare per categoria/team qui se performante
+      // Filtri backend minimali
+      const backendFilters = {};
       if (filters.category) backendFilters.category = filters.category;
       if (filters.team) backendFilters.team = filters.team;
-      // Potresti aggiungere un range di date qui se utile (es. ieri, oggi, domani)
 
       const fetchedMatches = await getMatches(backendFilters);
-      setAllFetchedMatches(fetchedMatches || []); // Salva tutte le partite fetchate
+      //console.log("MATCH CARICATI DAL BACKEND:", fetchedMatches.length, fetchedMatches);
 
+      setAllFetchedMatches(fetchedMatches || []);
     } catch (err) {
       console.error('Error loading matches:', err);
       setError(err.message || 'Errore durante il caricamento delle partite');
-      setAllFetchedMatches([]); // Resetta in caso di errore
+      setAllFetchedMatches([]);
     } finally {
       setLoading(false);
     }
-  }, [filters.category, filters.team]); // Dipende dai filtri usati nel backend
+  }, [filters.category, filters.team]);
 
   useEffect(() => {
     loadMatches();
-  }, [loadMatches]); // Esegui loadMatches quando i filtri nel backend cambiano
-
+  }, [loadMatches]);
 
   // --- Logica Filtro UI e Raggruppamento ---
   useEffect(() => {
-      console.log("[Matches.js] Applicazione filtri UI e raggruppamento...");
-      let processedMatches = [...allFetchedMatches]; // Copia per non mutare lo state originale
+    let processedMatches = [...allFetchedMatches];
 
-      // 1. Applica Filtri UI (Data specifica per tab "Oggi", Categoria, Team)
-       // Filtro Data (solo per tab "Oggi")
-      if (tabValue === 0 && filters.date?.isValid()) {
-           const selectedDay = filters.date.startOf('day');
-           processedMatches = processedMatches.filter(match =>
-               moment(match.date).isSame(selectedDay, 'day') || match.isGoldenSet // Tieni i golden set per ora
-           );
-           console.log(`[Matches.js] Dopo filtro data (${selectedDay.format('YYYY-MM-DD')}): ${processedMatches.length} partite`);
-      }
-      // Nota: i filtri per categoria/team potrebbero essere già applicati dal backend in loadMatches.
-      // Se non lo sono, applicali qui:
-      // if (filters.category) {
-      //    processedMatches = processedMatches.filter(match => match.category === filters.category || match.isGoldenSet);
-      // }
-      // if (filters.team) {
-      //     processedMatches = processedMatches.filter(match =>
-      //        (match.teamA?._id === filters.team || match.teamB?._id === filters.team) || match.isGoldenSet
-      //     );
-      // }
-
-
-      // 2. Applica Filtri Temporali (ultime 2 ore, futuro) e Sottoscrizioni
-      // Usando la funzione da MatchGroupUtils
-      // NOTA: Passiamo 'null' per currentUser/subscribedTeams/showOnlySubscribed
-      // se la logica di sottoscrizione non è ancora implementata qui.
-      // Altrimenti, passa gli state appropriati.
-      let timeAndSubFilteredMatches = filterMatches(
-            processedMatches,
-            subscribedTeams,  // Passa lo stato delle squadre sottoscritte
-            showOnlySubscribed, // Passa lo stato dello switch "Solo mie"
-            currentUser       // Passa lo stato dell'utente loggato
+    // 1. Filtro data (solo tab "Oggi")
+    if (tabValue === 0 && filters.date?.isValid()) {
+      const selectedDay = filters.date.startOf('day');
+      processedMatches = processedMatches.filter(match =>
+        moment(match.date).isSame(selectedDay, 'day')
       );
-       console.log(`[Matches.js] Dopo filterMatches (tempo/subs): ${timeAndSubFilteredMatches.length} partite`);
+    }
+    //console.log("MATCH FILTRATI SOLO OGGI:", processedMatches.length, processedMatches);
 
+    // 2. Filtri temporali e sottoscrizioni
+    let timeAndSubFilteredMatches = filterMatches(
+      processedMatches,
+      subscribedTeams,
+      showOnlySubscribed,
+      currentUser
+    );
 
-       // 3. Applica filtro per Tab (Future / Completate) DOPO il filtro temporale base
-       if (tabValue === 1) { // Future
-           const today = moment().startOf('day');
-           timeAndSubFilteredMatches = timeAndSubFilteredMatches.filter(match =>
-                moment(match.date).isSameOrAfter(today) || match.isGoldenSet // Tieni i golden set per ora
-           );
-            console.log(`[Matches.js] Dopo filtro Tab Future: ${timeAndSubFilteredMatches.length} partite`);
+    // 3. Filtri per tab
+    if (tabValue === 1) { // Future
+      const today = moment.utc().startOf('day');
+      timeAndSubFilteredMatches = timeAndSubFilteredMatches.filter(match =>
+        moment.utc(match.date).isAfter(today)
+      );
+      //console.log("MATCH FILTRATI SOLO NEL FUTURO:", timeAndSubFilteredMatches.length, timeAndSubFilteredMatches);
+    } else if (tabValue === 2) { // Completate
+      timeAndSubFilteredMatches = timeAndSubFilteredMatches.filter(match =>
+        (match.officialResult && match.officialResult !== 'pending')
+      );
+      //console.log("MATCH COMPLETATI:", timeAndSubFilteredMatches.length, timeAndSubFilteredMatches);
+    }
 
-       } else if (tabValue === 2) { // Completate
-            timeAndSubFilteredMatches = timeAndSubFilteredMatches.filter(match =>
-               (match.officialResult && match.officialResult !== 'pending') || // Match normali completati
-               (match.isGoldenSet && match.officialScoreA?.length > 0 && !(match.officialScoreA[0] === '0' && match.officialScoreB?.[0] === '0') ) // Golden set completati (non 0-0)
-            );
-             console.log(`[Matches.js] Dopo filtro Tab Completate: ${timeAndSubFilteredMatches.length} partite`);
-       }
+    // 4. Salva partite filtrate
+    setFilteredMatches(timeAndSubFilteredMatches);
 
-      // 4. Salva le partite filtrate (prima del raggruppamento)
-      setFilteredMatches(timeAndSubFilteredMatches);
-
-
-      // 5. Raggruppa le partite filtrate finali
-      // Usando la funzione da MatchGroupUtils
-      const grouped = groupRelatedMatches(timeAndSubFilteredMatches);
-      setGroupedMatches(grouped);
-      console.log(`[Matches.js] Raggruppamento finale: ${grouped.length} gruppi`);
-
-  }, [allFetchedMatches, filters, tabValue, currentUser, subscribedTeams, showOnlySubscribed]); // Ricalcola quando i dati o i filtri cambiano
-
+    // 5. Raggruppa partite
+    const grouped = groupRelatedMatches(timeAndSubFilteredMatches);
+    setGroupedMatches(grouped);
+  }, [allFetchedMatches, filters, tabValue, currentUser, subscribedTeams, showOnlySubscribed]);
 
   // --- Handlers ---
   const handleFilterChange = (field, value) => {
@@ -166,27 +156,35 @@ const Matches = () => {
   };
 
   const handleTabChange = (event, newValue) => {
-    // Resetta data quando si cambia tab? Forse no se vuoi mantenere il giorno selezionato
-    // if (newValue !== 0) {
-    //    setFilters(prev => ({ ...prev, date: null }));
-    // } else if (!filters.date) {
-    //    setFilters(prev => ({ ...prev, date: moment() })); // Imposta oggi se si torna al tab Oggi
-    // }
     setTabValue(newValue);
   };
-
-  // --- Rimosse Definizioni Locali ---
-  // const groupRelatedMatches = (matchesList) => { ... };
-  // const calculateSetResult = (match) => { ... };
-  // const formatDetailedScore = (match) => { ... };
-  // const determineGroupWinner = (group) => { ... };
+  
+  const handleSubscribedToggle = () => {
+    setShowOnlySubscribed(prev => !prev);
+  };
 
   return (
     <LocalizationProvider dateAdapter={AdapterMoment} adapterLocale="it">
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Partite Torneo
-        </Typography>
+        {/* Header con titolo e switch "Solo mie squadre" */}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h4" gutterBottom>
+            Partite
+          </Typography>
+          
+          {currentUser && subscribedTeams.length > 0 && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showOnlySubscribed}
+                  onChange={handleSubscribedToggle}
+                  color="primary"
+                />
+              }
+              label="Solo mie squadre"
+            />
+          )}
+        </Box>
 
         {/* Tabs */}
         <Paper sx={{ mb: 3 }}>
@@ -202,22 +200,22 @@ const Matches = () => {
           <Grid container spacing={2} alignItems="center">
             {/* Mostra DatePicker solo nel tab "Oggi" */}
             {tabValue === 0 && (
-              <Grid item xs={12} sm={4}>
+              <Grid xs={12}>
                 <DatePicker
                   label="Data"
                   value={filters.date}
                   onChange={(newValue) => handleFilterChange('date', newValue)}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
-                  inputFormat="DD/MM/YYYY" // Formato desiderato
+                  slotProps={{ textField: { fullWidth: true } }}
+                  format="DD/MM/YYYY"
                 />
               </Grid>
             )}
             {/* Filtri Categoria e Team sempre visibili */}
-            <Grid item xs={12} sm={tabValue === 0 ? 4 : 6}>
+            <Grid xs={12} sm={tabValue === 0 ? 4 : 6} sx={{minWidth:200}}>
               <FormControl fullWidth>
                 <InputLabel>Categoria</InputLabel>
                 <Select
-                  name="category" // Aggiunto name per coerenza
+                  name="category"
                   value={filters.category}
                   label="Categoria"
                   onChange={(e) => handleFilterChange('category', e.target.value)}
@@ -229,11 +227,11 @@ const Matches = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={tabValue === 0 ? 4 : 6}>
+            <Grid xs={12} sm={tabValue === 0 ? 4 : 6} sx={{minWidth:200}}>
               <FormControl fullWidth>
                 <InputLabel>Squadra</InputLabel>
                 <Select
-                  name="team" // Aggiunto name
+                  name="team"
                   value={filters.team}
                   label="Squadra"
                   onChange={(e) => handleFilterChange('team', e.target.value)}
@@ -254,21 +252,35 @@ const Matches = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
         ) : groupedMatches.length === 0 ? (
-           <Paper elevation={1} sx={{ p: 4, textAlign: 'center', backgroundColor: '#f9f9f9' }}>
-             <Typography variant="h6" color="text.secondary">Nessuna partita trovata</Typography>
-             <Typography variant="body2" color="text.secondary">Prova a modificare i filtri o seleziona un altro tab.</Typography>
+          <Paper elevation={1} sx={{ p: 4, textAlign: 'center', backgroundColor: '#f9f9f9' }}>
+            <Typography variant="h6" color="text.secondary">Nessuna partita trovata</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {showOnlySubscribed ? 
+                "Prova a disattivare il filtro 'Solo mie squadre' o seleziona un altro tab." :
+                "Prova a modificare i filtri o seleziona un altro tab."}
+            </Typography>
           </Paper>
         ) : (
-          // Usa Grid per mostrare le MatchGroupCard
           <Grid container spacing={3}>
             {groupedMatches.map((group) => (
-              <Grid item xs={12} sm={6} lg={4} key={group.id}> {/* Adatta lg per 3 colonne */}
-                {/* *** USA IL COMPONENTE MatchGroupCard *** */}
+              <Grid xs={12} sm={6} lg={4} key={group.id}>
                 <MatchGroupCard group={group} />
               </Grid>
             ))}
           </Grid>
         )}
+        
+        {/* Bottone per ricaricare */}
+        <Box mt={3} display="flex" justifyContent="center">
+          <Button 
+            variant="outlined" 
+            onClick={loadMatches} 
+            startIcon={loading ? <CircularProgress size={20} /> : null}
+            disabled={loading}
+          >
+            Ricarica partite
+          </Button>
+        </Box>
       </Container>
     </LocalizationProvider>
   );

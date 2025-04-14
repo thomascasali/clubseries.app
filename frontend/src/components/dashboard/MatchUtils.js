@@ -1,3 +1,5 @@
+// src/components/dashboard/MatchUtils.js
+
 import moment from 'moment';
 import 'moment/locale/it';
 
@@ -77,131 +79,223 @@ export const determineGroupWinner = (group) => {
   return null; // Pareggio o risultato non chiaro
 };
 
+
+const formatDisplayPhase = (phase, matchId) => {
+  if (!phase) return 'N/A';
+  
+  // Caso 1: Pool con formato "Pool A - 08A vs 09A"
+  const poolMatchPattern = /^(Pool \w+) - (\d+)A vs (\d+)A$/;
+  if (poolMatchPattern.test(phase)) {
+    const match = phase.match(poolMatchPattern);
+    // Rimuovi gli zeri iniziali dai numeri
+    return `${match[1]} - ${parseInt(match[2])} vs ${parseInt(match[3])}`;
+  }
+  
+  // Caso 2: Pool con formato "Pool A F3 - A vs A"
+  const poolFormatPattern = /^(Pool \w+) (F\d+) - A vs A$/;
+  if (poolFormatPattern.test(phase)) {
+    const match = phase.match(poolFormatPattern);
+    return `${match[1]} - ${match[2]}`;
+  }
+  
+  // Caso 3: Play-In con formato "03A-G vs 04B-G"
+  if (phase.includes('Play-In') || (matchId && matchId.includes('Play-In'))) {
+    // Cerca pattern come "01A-G vs 02B-G" o simili
+    const playInPattern = /(\d+)([A-Z])-G vs (\d+)([A-Z])-G/;
+    const match = phase.match(playInPattern);
+    
+    if (match) {
+      // Estrai i numeri e le lettere delle pool
+      return `Play-In ${parseInt(match[1])}${match[2]} vs ${parseInt(match[3])}${match[4]}`;
+    }
+    
+    // Se non corrisponde al pattern, mantieni Play-In + resto
+    if (phase.toLowerCase().includes('play-in')) {
+      return phase;
+    }
+    
+    return 'Play-In';
+  }
+  
+  // Caso 4: Draw Schedule con formato "Ottavi - 05A vs 12A"
+  const drawSchedulePattern = /^(\w+) - (\d+)A vs (\d+)A$/;
+  if (drawSchedulePattern.test(phase)) {
+    const match = phase.match(drawSchedulePattern);
+    // Rimuovi gli zeri iniziali dai numeri
+    return `${match[1]} - ${parseInt(match[2])} vs ${parseInt(match[3])}`;
+  }
+  
+  // Default: ritorna la fase originale
+  return phase;
+};
+
 export const groupRelatedMatches = (matchesList) => {
   if (!matchesList || matchesList.length === 0) return [];
 
-  const matchesById = {};
-  const groupsById = {};
-
+  // Aggruppiamo i match per baseMatchId (parte comune del matchId senza l'ultimo carattere A/B/G)
+  const groups = {};
+  
   matchesList.forEach(match => {
-    matchesById[match._id] = match;
+    // Debug per esaminare il formato della data
+    if (match.date) {
+      //console.log(`Match ID: ${match.matchId}, Date: ${match.date}, Type: ${typeof match.date}`);
+    }
+    
+    // Estrai la parte base del matchId (rimuovendo l'ultimo carattere se è A, B o G)
+    let baseMatchId = match.matchId;
+    if (baseMatchId && /[ABG]$/i.test(baseMatchId)) {
+      baseMatchId = baseMatchId.slice(0, -1);
+    }
+    
+    // Se non abbiamo ancora un gruppo per questo baseMatchId, creane uno nuovo
+    if (!groups[baseMatchId]) {
+      
+      const initialDisplayPhase = formatDisplayPhase(match.phase, match.matchId);
+
+      groups[baseMatchId] = {
+        id: baseMatchId,
+        matches: [],
+        goldenSet: null,
+        teamA: null,
+        teamB: null,
+        category: match.category,
+        phase: match.phase || 'N/A',
+        displayPhase: initialDisplayPhase,
+        date: null,
+        time: null,
+        court: null,
+        sheetName: match.sheetName
+      };
+    }
+    
+    // Determina se questo match è un Golden Set
+    if (match.isGoldenSet || match.matchId.endsWith('G')) {
+      groups[baseMatchId].goldenSet = match;
+    } else {
+      groups[baseMatchId].matches.push(match);
+      
+      // Se è la prima partita del gruppo, inizializza le squadre
+      if (groups[baseMatchId].teamA === null) {
+        groups[baseMatchId].teamA = {
+          name: match.teamA.name.replace(/\s+Team [ABG]$/i, ''),
+          id: match.teamA._id
+        };
+        groups[baseMatchId].teamB = {
+          name: match.teamB.name.replace(/\s+Team [ABG]$/i, ''),
+          id: match.teamB._id
+        };
+      }
+      
+      // Se questo match termina con 'A', imposta come partita di riferimento per data/ora/campo
+      if (match.matchId.endsWith('A')) {
+        // Assicuriamoci che la data sia in un formato utilizzabile
+        let dateValue = match.date;
+        
+        // Se è un oggetto Date, convertiamolo in un formato stringa ISO
+        if (dateValue instanceof Date) {
+          dateValue = dateValue.toISOString().split('T')[0];
+        } 
+        // Se è una stringa ISO con timestamp, estraiamo solo la data
+        else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+          dateValue = dateValue.split('T')[0];
+        }
+        
+        groups[baseMatchId].date = dateValue;
+        groups[baseMatchId].time = match.time;
+        groups[baseMatchId].court = match.court;
+        groups[baseMatchId].phase = match.phase;
+        groups[baseMatchId].displayPhase = formatDisplayPhase(match.phase, match.matchId);
+      }
+    }
   });
 
-  matchesList.forEach(match => {
-    let groupId;
-
-    if (match.isGoldenSet) {
-      groupId = match._id;
-
-      if (!groupsById[groupId]) {
-        groupsById[groupId] = {
-          id: groupId,
-          goldenSet: match,
-          matches: [],
-          teamA: {
-            name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
-            id: match.teamA._id
-          },
-          teamB: {
-            name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
-            id: match.teamB._id
-          },
-          category: match.category,
-          phase: match.phase,
-          // data, ora e campo verranno presi dalla partita Team A vs Team A
-          date: null,
-          time: null,
-          court: null,
-          sheetName: match.sheetName
-        };
+  // Secondo passaggio: gestione fallback per info mancanti
+  Object.values(groups).forEach(group => {
+    // Se manca la data, cerchiamo in tutte le partite disponibili
+    if (!group.date) {
+      // Prima cerchiamo le partite di tipo 'A'
+      const matchA = group.matches.find(m => m.matchId && m.matchId.endsWith('A'));
+      
+      if (matchA && matchA.date) {
+        // Normalizza la data come sopra
+        let dateValue = matchA.date;
+        if (dateValue instanceof Date) {
+          dateValue = dateValue.toISOString().split('T')[0];
+        } else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+          dateValue = dateValue.split('T')[0];
+        }
+        
+        group.date = dateValue;
+        group.time = matchA.time;
+        group.court = matchA.court;
+        group.phase = matchA.phase;
+        group.displayPhase = matchA.phase;
       } else {
-        groupsById[groupId].goldenSet = match;
+        // Altrimenti prendiamo la prima partita non Golden
+        const normalMatch = group.matches.find(m => !m.isGoldenSet);
+        if (normalMatch && normalMatch.date) {
+          // Normalizza la data
+          let dateValue = normalMatch.date;
+          if (dateValue instanceof Date) {
+            dateValue = dateValue.toISOString().split('T')[0];
+          } else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+            dateValue = dateValue.split('T')[0];
+          }
+          
+          group.date = dateValue;
+          group.time = normalMatch.time;
+          group.court = normalMatch.court;
+          group.phase = normalMatch.phase;
+          group.displayPhase = normalMatch.phase;
+        } else if (group.goldenSet && group.goldenSet.date) {
+          // Come ultima risorsa, prendiamo dal Golden Set
+          let dateValue = group.goldenSet.date;
+          if (dateValue instanceof Date) {
+            dateValue = dateValue.toISOString().split('T')[0];
+          } else if (typeof dateValue === 'string' && dateValue.includes('T')) {
+            dateValue = dateValue.split('T')[0];
+          }
+          
+          group.date = dateValue;
+          group.time = group.goldenSet.time;
+          group.court = group.goldenSet.court;
+          group.phase = group.goldenSet.phase;
+          group.displayPhase = group.goldenSet.phase;
+        }
       }
-    } else if (match.relatedMatchId) {
-      groupId = match.relatedMatchId;
-
-      if (!groupsById[groupId]) {
-        const relatedGolden = matchesById[groupId];
-        groupsById[groupId] = {
-          id: groupId,
-          goldenSet: relatedGolden?.isGoldenSet ? relatedGolden : null,
-          matches: [],
-          teamA: {
-            name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
-            id: match.teamA._id
-          },
-          teamB: {
-            name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
-            id: match.teamB._id
-          },
-          category: match.category,
-          phase: match.phase,
-          date: null,
-          time: null,
-          court: null,
-          sheetName: match.sheetName
-        };
-      }
-
-      groupsById[groupId].matches.push(match);
-
-      // Se è la partita Team A vs Team A, imposta come data/ora/campo di riferimento
-      if (match.teamACode === 'A' && match.teamBCode === 'A') {
-        groupsById[groupId].date = match.date;
-        groupsById[groupId].time = match.time;
-        groupsById[groupId].court = match.court;
-      }
-    } else {
-      groupId = `single-${match._id}`;
-      groupsById[groupId] = {
-        id: groupId,
-        matches: [match],
-        goldenSet: null,
-        teamA: {
-          name: match.teamA.name.replace(/\s+Team [ABG]$/, ''),
-          id: match.teamA._id
-        },
-        teamB: {
-          name: match.teamB.name.replace(/\s+Team [ABG]$/, ''),
-          id: match.teamB._id
-        },
-        category: match.category,
-        phase: match.phase,
-        date: match.date,
-        time: match.time,
-        court: match.court,
-        sheetName: match.sheetName
+    }
+    
+    // Debug per verificare lo stato finale
+    //console.log(`Group ID: ${group.id}, Final Date: ${group.date}, Type: ${typeof group.date}`);
+    
+    // Nel caso in cui non abbiamo trovato le squadre principali
+    if (!group.teamA && group.goldenSet) {
+      group.teamA = {
+        name: group.goldenSet.teamA.name.replace(/\s+Team [ABG]$/i, ''),
+        id: group.goldenSet.teamA._id
+      };
+      group.teamB = {
+        name: group.goldenSet.teamB.name.replace(/\s+Team [ABG]$/i, ''),
+        id: group.goldenSet.teamB._id
       };
     }
   });
 
-  // Filtro di sicurezza nel caso raro in cui non venga trovata la partita Team A vs Team A
-  Object.values(groupsById).forEach(group => {
-    if (!group.date) {
-      // prende la data più recente tra le partite normali, in mancanza della partita A vs A
-      const normalMatch = group.matches.find(m => !m.isGoldenSet);
-      if (normalMatch) {
-        group.date = normalMatch.date;
-        group.time = normalMatch.time;
-        group.court = normalMatch.court;
-      } else if (group.goldenSet) {
-        group.date = group.goldenSet.date;
-        group.time = group.goldenSet.time;
-        group.court = group.goldenSet.court;
-      }
+  // Converte il dizionario in array e ordina per data e ora
+  return Object.values(groups).sort((a, b) => {
+    try {
+      const dateA = a.date ? moment(`${a.date}T${a.time || '00:00'}`) : null;
+      const dateB = b.date ? moment(`${b.date}T${b.time || '00:00'}`) : null;
+      
+      if (!dateA || !dateA.isValid()) return 1;
+      if (!dateB || !dateB.isValid()) return -1;
+      return dateA - dateB;
+    } catch (e) {
+      console.error('Error sorting dates:', e);
+      return 0;
     }
   });
-
-  // Converte il dizionario in array e ordina per data e ora
-  return Object.values(groupsById).sort((a, b) => {
-    const dateA = moment(`${a.date}T${a.time}`, moment.ISO_8601, true);
-    const dateB = moment(`${b.date}T${b.time}`, moment.ISO_8601, true);
-    if (!dateA.isValid()) return 1;
-    if (!dateB.isValid()) return -1;
-    return dateA - dateB;
-  });
 };
-
 
 // Filtra le partite in base alle ultime 2 ore e future
 export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, currentUser) => {
@@ -212,53 +306,31 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
   
   console.log("Filtrando partite, totale:", allMatches.length);
   
-  // Log per debugging - vediamo quante partite Play-In ci sono inizialmente
-  const initialPlayInMatches = allMatches.filter(match => 
-    match.sheetName === 'Play-In' || 
-    (match.phase && match.phase.toLowerCase().includes('play-in'))
-  );
-  console.log(`Inizialmente ${initialPlayInMatches.length} partite Play-In`);
-  
   const now = moment();
   const twoHoursAgo = moment().subtract(2, 'hours');
   
-  // Separiamo i Golden Set dal resto delle partite
-  const goldenSets = allMatches.filter(match => match.isGoldenSet);
-  
-  console.log(`Trovati ${goldenSets.length} Golden Set da preservare dal filtro temporale`);
-  
   // Per ogni partita, controlliamo se è nelle ultime 2 ore o futura
   let relevantMatches = allMatches.filter(match => {
-    // Se è un Golden Set, lo includiamo sempre
-    if (match.isGoldenSet) {
-      return true;
+    // Se è un Golden Set, manteniamolo sempre per ora
+    if (match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') {
+      //return true;
     }
     
-    // Per le partite Play-In, controlliamo se hanno data futura e le includiamo sempre
-    // indipendentemente dal filtro temporale se la data è nel futuro
-    if (match.sheetName === 'Play-In' || 
-        (match.phase && match.phase.toLowerCase().includes('play-in'))) {
-      // Verifichiamo che la data sia valida
-      if (!match.date) {
-        console.log(`Play-In match ${match._id} senza data, escluso`);
-        return false;
-      }
-      
-      // Verifica se è una data futura
-      const matchDate = new Date(match.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // Inizio giornata odierna
-      
-      const isFutureDate = matchDate >= today;
-      
-      if (isFutureDate) {
-        console.log(`Play-In match ${match._id} incluso perché ha data futura: ${match.date}`);
-        return true;
-      }
-    }
+    // Per le partite Play-In o Draw Schedule, includiamole sempre
+    // poiché sono importanti fasi finali
+    if (match.sheetName.toLowerCase().includes('play-in') || 
+        match.sheetName.toLowerCase().includes('draw schedule') ||
+        (match.sheetName.toLowerCase().includes('pool')) ||
+        (match.phase && (match.phase.toLowerCase().includes('pool') ||
+                      match.phase.toLowerCase().includes('play-in') || 
+                      match.phase.toLowerCase().includes('quarti') ||
+                      match.phase.toLowerCase().includes('semi') ||
+                      match.phase.toLowerCase().includes('finale')))) {
+    return true;
+  }
     
     if (!match.date || !match.time || match.time === 'N/A') {
-      console.log(`Match ${match._id} saltato: data o ora mancante/invalida`);
+      console.log("Partita esclusa per data/ora mancante o non valida:", match);
       return false;
     }
     
@@ -273,7 +345,7 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
       matchDateTime = moment(`${datePart}T${match.time}`);
       
       if (!matchDateTime.isValid()) {
-        console.log(`Match ${match._id} saltato: datetime non valido`);
+        console.log("Partita esclusa per matchDateTime non valido:", match);
         return false;
       }
     } catch (e) {
@@ -282,8 +354,7 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
     }
     
     // Verifica se la partita è nelle ultime 2 ore o futura
-    const isRelevant = matchDateTime.isAfter(twoHoursAgo);
-    return isRelevant;
+    return matchDateTime.isAfter(twoHoursAgo);
   });
   
   console.log("Partite rilevanti dopo filtro temporale:", relevantMatches.length);
@@ -293,9 +364,32 @@ export const filterMatches = (allMatches, subscribedTeams, showOnlySubscribed, c
     console.log("Applicando filtro per squadre sottoscritte");
     const subscribedTeamIds = subscribedTeams.map(team => team._id);
     
+    // Tieni traccia dei Golden Set che corrispondono a partite delle squadre sottoscritte
+    const relevantGoldenSetIds = new Set();
+    
+    // Prima fase: identifica partite normali di squadre sottoscritte e i loro Golden Set
+    relevantMatches.forEach(match => {
+      if (!match.isGoldenSet && 
+          (match.teamA && subscribedTeamIds.includes(match.teamA._id) ||
+           match.teamB && subscribedTeamIds.includes(match.teamB._id))) {
+        // Se questa partita ha un relatedMatchId che è un Golden Set, includiamolo
+        if (match.relatedMatchId) {
+          relevantGoldenSetIds.add(match.relatedMatchId);
+        }
+      }
+    });
+    
+    // Seconda fase: filtra le partite
     relevantMatches = relevantMatches.filter(match => {
+      // Se è un Golden Set, controllare se è rilevante
+      if (match.isGoldenSet || match.teamACode === 'G' || match.teamBCode === 'G') {
+        return relevantGoldenSetIds.has(match._id);
+      }
+      
+      // Altrimenti, controlla se la squadra è sottoscritta
       const isTeamASubscribed = match.teamA && subscribedTeamIds.includes(match.teamA._id);
       const isTeamBSubscribed = match.teamB && subscribedTeamIds.includes(match.teamB._id);
+      
       return isTeamASubscribed || isTeamBSubscribed;
     });
     
@@ -322,7 +416,7 @@ export const filterRelevantGroups = (groups) => {
     }
 
     const isValid = matchDateTime.isAfter(twoHoursAgo);
-    console.log("Verifica data gruppo:", group, "Valido?", isValid, matchDateTime.format());
+    //console.log("Verifica data gruppo:", group, "Valido?", isValid, matchDateTime.format());
     return isValid;
   });
 };
