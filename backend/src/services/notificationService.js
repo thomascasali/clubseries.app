@@ -36,6 +36,7 @@ exports.processNotifications = async () => {
     let successCount = 0;
     let failedCount = 0;
     
+
     for (const notification of pendingNotifications) {
       try {
         // Preparazione notifica FCM
@@ -217,5 +218,32 @@ exports.createTeamNotification = async (teamId, type, message, matchId = null) =
     logger.info(`Created ${notifications.length} notifications for team ${teamId}`);
   } catch (error) {
     logger.error(`Error creating team notifications: ${error.message}`);
+  }
+};
+
+/**
+ * Elimina tutte le notifiche di un utente specifico
+ * @param {string} userId - ID dell'utente
+ * @returns {Promise<Object>} - Risultato dell'operazione
+ */
+exports.deleteAllUserNotifications = async (userId) => {
+  try {
+    if (!userId) {
+      throw new Error('ID utente richiesto');
+    }
+    
+    // Eseguiamo l'eliminazione delle notifiche
+    const result = await Notification.deleteMany({ user: userId });
+    
+    logger.info(`Eliminate ${result.deletedCount} notifiche per l'utente ${userId}`);
+    
+    return {
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Eliminate ${result.deletedCount} notifiche`
+    };
+  } catch (error) {
+    logger.error(`Errore nell'eliminazione delle notifiche dell'utente: ${error.message}`);
+    throw error;
   }
 };

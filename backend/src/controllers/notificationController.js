@@ -100,3 +100,22 @@ exports.deleteNotification = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Elimina tutte le notifiche dell'utente corrente
+// @route   DELETE /api/notifications/delete-all
+// @access  Private
+exports.deleteAllNotifications = async (req, res) => {
+  try {
+    const notificationService = require('../services/notificationService');
+    
+    const result = await notificationService.deleteAllUserNotifications(req.user._id);
+    
+    res.status(200).json({
+      message: 'Tutte le notifiche sono state eliminate',
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    logger.error(`Error in deleteAllNotifications: ${error.message}`);
+    res.status(500).json({ message: error.message });
+  }
+};

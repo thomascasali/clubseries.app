@@ -2,15 +2,7 @@
 
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import {
-  Card,
-  CardContent,
-  CardActions,
-  Typography,
-  Box,
-  Chip,
-  Button
-} from '@mui/material';
+import { Card, CardContent, CardActions, Typography, Box, Chip, Button } from '@mui/material';
 import moment from 'moment';
 import 'moment/locale/it';
 // Assicurati che questo import punti al file MatchGroupUtils.js finale!
@@ -85,10 +77,11 @@ const MatchGroupCard = ({ group }) => {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: isRecent ? '#fff8e1' : 'white'
+        backgroundColor: isRecent ? '#fff8e1' : 'white',
+        width: '100%' // Lascia solo questo per la larghezza
       }}
     >
-      <CardContent sx={{ flexGrow: 1, pb: 1, minWidth: {xs:300, sm:350}}}>
+      <CardContent sx={{ flexGrow: 1, pb: 1}}>
         <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           {/* Chip Categoria */}
           <Chip

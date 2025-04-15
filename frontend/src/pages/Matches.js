@@ -248,7 +248,7 @@ const Matches = () => {
 
         {/* Visualizzazione Partite */}
         {loading ? (
-          <Box display="flex" justifyContent="center" p={5}><CircularProgress /></Box>
+          <Box sx={{ width: '100%'}} display="flex" justifyContent="center" p={5}><CircularProgress /></Box>
         ) : error ? (
           <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
         ) : groupedMatches.length === 0 ? (
@@ -262,12 +262,55 @@ const Matches = () => {
           </Paper>
         ) : (
           <Grid container spacing={3}>
-            {groupedMatches.map((group) => (
-              <Grid xs={12} sm={6} lg={4} key={group.id}>
-                <MatchGroupCard group={group} />
-              </Grid>
-            ))}
-          </Grid>
+  {groupedMatches.map((group) => (
+    <Grid
+      item // Mantieni 'item'
+      // Definiamo ancora i breakpoint per semantica e fallback (SSR, etc.)
+      xs={12}
+      sm={6}
+      lg={4}
+      key={group.id}
+      sx={{
+        // Sovrascriviamo LARGHEZZA e FLEX-BASIS/MAX-WIDTH manualmente per ogni breakpoint
+        // Questo RICALCOLA manualmente ciò che xs/sm/lg dovrebbero fare,
+        // ma usando 32% per lg invece di 33.33%
+        boxSizing: 'border-box', // Assicuriamoci sia border-box
+
+        // -- Inizio Override Manuale --
+        flexBasis: 'auto', // Partiamo da auto
+        flexGrow: 0,       // Non deve crescere
+        maxWidth: 'none',  // Disabilitiamo max-width di default del Grid
+        width: '100%',     // Default per xs
+
+        // Breakpoint sm (>= 300px) -> 1 colonne (100%)
+        '@media (min-width: 300px)': {
+          width: '100%',
+          maxWidth: '100%' // Opzionale, width dovrebbe bastare
+        },
+       
+        // Breakpoint sm (>= 600px) -> 2 colonne (50%)
+        '@media (min-width: 600px)': {
+           width: '48%',
+           // maxWidth: '50%' // Opzionale, width dovrebbe bastare
+        },
+        // Breakpoint md (>= 900px) -> Se sm={6}, md eredita 50%
+
+        // Breakpoint lg (>= 1200px) -> 3 colonne (USIAMO 32% invece di 33.33%)
+        '@media (min-width: 1200px)': {
+           width: '31%', // <-- Il tuo valore che funziona visivamente
+           // maxWidth: '32%' // Opzionale
+        },
+        // -- Fine Override Manuale --
+
+        // Aggiungi di nuovo il bordo se vuoi ancora visualizzarlo
+        // border: '1px solid green'
+      }}
+    >
+      {/* La Card interna dovrebbe ancora avere width: '100%' */}
+      <MatchGroupCard group={group} sx={{ width: '100%', height: '100%' }}/>
+    </Grid>
+  ))}
+</Grid>
         )}
         
         {/* Bottone per ricaricare */}

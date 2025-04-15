@@ -228,19 +228,6 @@ const sendMatchNotifications = async (matches, isNew = false) => {
           }
         }
         
-        // Verifica se esiste già una notifica simile per questo utente e match
-        // per evitare notifiche duplicate
-        const existingNotification = await Notification.findOne({
-          user: user._id,
-          match: matchWithTeams._id,
-          type: notificationType,
-          createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // Ultime 30 minuti
-        });
-        
-        if (existingNotification) {
-          continue;
-        }
-        
         // Crea la notifica
         await Notification.create({
           user: user._id,

@@ -80,7 +80,9 @@ const MatchesSection = ({
         <>
           <Grid container spacing={2}>
             {groupedMatches.map((group) => (
-              <Grid item xs={12} sm={6} md={4} key={group.id}>
+              <Grid item xs={12} sm={6} md={4} key={group.id}
+              sx={{width:'100%'}}
+              >
                 <MatchGroupCard group={group} />
               </Grid>
             ))}
@@ -88,7 +90,7 @@ const MatchesSection = ({
         </>
       )}
       
-      <Box display="flex" justifyContent="flex-end" mt={2}>
+      <Box display="flex" justifyContent="center" mt={2}>
         <Button 
           variant="contained" 
           component={RouterLink} 

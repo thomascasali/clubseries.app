@@ -47,3 +47,15 @@ export const deleteNotification = async (notificationId) => {
     );
   }
 };
+
+export const deleteAllNotifications = async () => {
+  try {
+    // Assicurati che il backend abbia una route DELETE /notifications/delete-all
+    const response = await api.delete('/notifications/delete-all');
+    return response.data;
+  } catch (error) {
+    console.error("Error in deleteAllNotifications service:", error.response || error);
+    // Rilancia l'errore per gestirlo nel componente
+    throw error; 
+  }
+};

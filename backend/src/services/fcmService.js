@@ -75,6 +75,15 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
       return { successCount: 0, failureCount: 0 };
     }
 
+    // Log dettagliato
+    logger.info(`*********** Preparing to send notification: ${JSON.stringify({
+      title: notification.title,
+      body: notification.body,
+      type: data.type,
+      userId: userId,
+      tokensCount: tokens.length
+    })}`);
+
     // Invia le notifiche individualmente a ciascun token
     let successCount = 0;
     let failureCount = 0;
@@ -87,10 +96,15 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
     // Invio sequenziale a ogni token
     for (const token of tokens) {
       try {
+
+          
         const message = {
           token,
-          notification,
-          data: stringData,
+          notification: {
+            title: notification.title,
+            body: notification.body
+          },
+          data: convertToStringValues(data),
           android: {
             priority: 'high'
           },
@@ -99,19 +113,27 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
               aps: {
                 contentAvailable: true
               }
+            },
+            headers: {
+              'apns-priority': '10'
             }
           },
           webpush: {
             headers: {
               Urgency: 'high'
+            },
+            notification: {
+              title: successCount+'-'+notification.title,
+              body: notification.body,
+              icon: './clubseries.png' 
             }
           }
         };
 
         const response = await admin.messaging().send(message);
+        logger.info(`########## Inviata notifica ${successCount} con messaggio ${message.notification.title} al token: ${token.substring(0, 10)}...`);
         responses.push({ success: true, messageId: response });
         successCount++;
-        logger.debug(`Sent notification to token: ${token.substring(0, 10)}...`);
       } catch (tokenError) {
         responses.push({ success: false, error: tokenError.message });
         failureCount++;
@@ -152,57 +174,6 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
 };
 
 /**
- * Funzione di supporto per inviare a un chunk di token
- * @private
- */
-const sendChunkToDevices = async (tokens, notification, data = {}) => {
-  // Crea un singolo oggetto MulticastMessage
-  const message = {
-    tokens: tokens, 
-    notification: notification,
-    data: convertToStringValues(data),
-    android: {
-      priority: 'high'
-    },
-    apns: {
-      payload: {
-        aps: {
-          'content-available': 1 
-        }
-      },
-      headers: {
-        'apns-priority': '10'
-      }
-    },
-    webpush: {
-      headers: {
-        Urgency: 'high'
-      },
-      notification: {
-        title: notification.title,
-        body: notification.body
-      }
-    }
-  };
-
-  const messaging = admin.messaging();
-  const response = await messaging.sendMulticast(message);
-
-  logger.info(`Sent multicast notification to ${tokens.length} tokens. Success: ${response.successCount}, Failure: ${response.failureCount}`);
-
-  // Logga gli errori per i token falliti
-  if (response.failureCount > 0) {
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success) {
-        logger.error(`Failed to send to token ${tokens[idx].substring(0, 10)}... Error: ${resp.error ? resp.error.message : 'Unknown error'}`);
-      }
-    });
-  }
-
-  return response;
-};
-
-/**
  * Invia una notifica a un topic FCM
  * @param {string} topic - Nome del topic 
  * @param {object} notification - Oggetto notifica con title e body
@@ -240,7 +211,7 @@ const sendToTopic = async (topic, notification, data = {}) => {
     };
 
     const response = await admin.messaging().send(message);
-    logger.info(`Notification sent to topic ${topic}`);
+    logger.info(`AAAAAAAAAAAAAAAAAA Notification sent to topic ${topic}`);
     return response;
   } catch (error) {
     logger.error(`Error sending notification to topic: ${error.message}`);
