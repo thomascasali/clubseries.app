@@ -3,7 +3,7 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
 // Maggiore visibilità nei log per il debug
-console.log('Firebase Messaging Service Worker Loaded');
+console.log('Firebase Messaging Service Worker Loaded - Version 2.0');
 
 // Inizializza l'app Firebase con le tue credenziali
 firebase.initializeApp({
@@ -27,18 +27,49 @@ messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.notification?.title || 'Club Series';
   const notificationBody = payload.notification?.body || '';
   
+  // Genera un ID univoco per la notifica per evitare duplicati
+  const notificationId = `clubseries-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  
   // Prepara le opzioni della notifica
   const notificationOptions = {
     body: notificationBody,
     icon: '/aibvc.png', // Usa l'icona AIBVC
     badge: '/aibvc.png',
+    // Usa un tag univoco per evitare duplicati
+    tag: notificationId,
+    // Aggiungi vibrazione per dispositivi mobili
+    vibrate: [200, 100, 200],
+    // Imposta l'importanza a massima per iOS
+    importance: 'high',
     // Includi eventuali dati aggiuntivi dalla notifica
-    data: payload.data || {}
+    data: {
+      ...payload.data,
+      // Aggiungi un timestamp univoco per evitare cache delle notifiche
+      timestamp: Date.now()
+    },
+    // Questi campi sono specifici per iOS Safari
+    actions: [{
+      action: 'view',
+      title: 'Visualizza'
+    }]
   };
 
   console.log('[firebase-messaging-sw.js] Mostrando notifica:', notificationTitle, notificationOptions);
-  // Mostra la notifica
-  return self.registration.showNotification(notificationTitle, notificationOptions);
+  
+  // Controlla se c'è già una notifica con lo stesso contenuto
+  self.registration.getNotifications().then(notifications => {
+    const isDuplicate = notifications.some(notification => 
+      notification.title === notificationTitle && 
+      notification.body === notificationBody
+    );
+    
+    if (!isDuplicate) {
+      // Mostra la notifica solo se non è un duplicato
+      return self.registration.showNotification(notificationTitle, notificationOptions);
+    } else {
+      console.log('[firebase-messaging-sw.js] Notifica duplicata ignorata');
+    }
+  });
 });
 
 // Gestisce il click sulla notifica
@@ -47,7 +78,7 @@ self.addEventListener('notificationclick', function(event) {
   
   event.notification.close();
   
-  // Estrai i dati dalla notifica se presenti
+  // Estrai i dati dalla notifica
   const notificationData = event.notification.data || {};
   
   // Url da aprire quando si clicca sulla notifica
@@ -87,9 +118,12 @@ self.addEventListener('notificationclick', function(event) {
 // Gestisce gli eventi di installazione del service worker
 self.addEventListener('install', (event) => {
   console.log('[firebase-messaging-sw.js] Service Worker installato');
-  self.skipWaiting(); // Attiva subito il service worker
+  // Forza l'attivazione immediata del service worker
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   console.log('[firebase-messaging-sw.js] Service Worker attivato');
+  // Forza la presa di controllo immediata delle pagine
+  event.waitUntil(self.clients.claim());
 });

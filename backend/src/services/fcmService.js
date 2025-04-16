@@ -75,13 +75,19 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
       return { successCount: 0, failureCount: 0 };
     }
 
+    // Rimuoviamo i duplicati nei token
+    const uniqueTokens = [...new Set(tokens)];
+    if (uniqueTokens.length !== tokens.length) {
+      logger.info(`Removed ${tokens.length - uniqueTokens.length} duplicate tokens`);
+    }
+
     // Log dettagliato
-    logger.info(`*********** Preparing to send notification: ${JSON.stringify({
+    logger.info(`Preparing to send notification: ${JSON.stringify({
       title: notification.title,
       body: notification.body,
       type: data.type,
       userId: userId,
-      tokensCount: tokens.length
+      tokensCount: uniqueTokens.length
     })}`);
 
     // Invia le notifiche individualmente a ciascun token
@@ -94,28 +100,34 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
     const stringData = convertToStringValues(data);
     
     // Invio sequenziale a ogni token
-    for (const token of tokens) {
+    for (const token of uniqueTokens) {
       try {
-
-          
         const message = {
           token,
           notification: {
             title: notification.title,
             body: notification.body
           },
-          data: convertToStringValues(data),
+          data: stringData,
           android: {
-            priority: 'high'
+            priority: 'high',
+            notification: {
+              channelId: 'clubseries_channel',
+              sound: 'default'
+            }
           },
           apns: {
             payload: {
               aps: {
-                contentAvailable: true
+                contentAvailable: true,
+                mutableContent: true,
+                sound: 'default',
+                badge: 1
               }
             },
             headers: {
-              'apns-priority': '10'
+              'apns-priority': '10',
+              'apns-push-type': 'alert'
             }
           },
           webpush: {
@@ -123,15 +135,21 @@ const sendToDevices = async (tokens, notification, data = {}, userId = null) => 
               Urgency: 'high'
             },
             notification: {
-              title: successCount+'-'+notification.title,
+              title: notification.title,
               body: notification.body,
-              icon: './clubseries.png' 
+              icon: '/clubseries.png',
+              badge: '/clubseries.png',
+              vibrate: [200, 100, 200],
+              tag: `clubseries-${Date.now()}` // Differenzia ogni notifica
+            },
+            fcmOptions: {
+              link: 'https://clubseries.app/notifications'
             }
           }
         };
 
         const response = await admin.messaging().send(message);
-        logger.info(`########## Inviata notifica ${successCount} con messaggio ${message.notification.title} al token: ${token.substring(0, 10)}...`);
+        logger.info(`Notification sent to token: ${token.substring(0, 10)}...`);
         responses.push({ success: true, messageId: response });
         successCount++;
       } catch (tokenError) {

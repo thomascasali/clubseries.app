@@ -1,3 +1,4 @@
+// src/pages/notifications/Notifications.js
 import React, { useState, useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
@@ -25,11 +26,11 @@ import {
   getNotifications, 
   markAsRead, 
   markAllAsRead, 
-  deleteNotification 
+  deleteNotification,
+  deleteAllNotifications
 } from '../../services/notificationService';
 import moment from 'moment';
 import 'moment/locale/it';
-
 // Imposta la lingua italiana per moment
 moment.locale('it');
 
@@ -72,7 +73,7 @@ const Notifications = () => {
   const handleMarkAllAsRead = async () => {
     try {
       await markAllAsRead();
-// Aggiorna lo stato localmente
+      // Aggiorna lo stato localmente
       setNotifications(notifications.map(n => ({ ...n, read: true })));
     } catch (err) {
       console.error('Error marking all notifications as read:', err);
@@ -89,6 +90,20 @@ const Notifications = () => {
     } catch (err) {
       console.error('Error deleting notification:', err);
       setError(err.message || 'Errore durante l\'eliminazione della notifica');
+    }
+  };
+
+  // Elimina tutte le notifiche
+  const handleDeleteAllNotifications = async () => {
+    if (window.confirm('Sei sicuro di voler eliminare tutte le notifiche?')) {
+      try {
+        await deleteAllNotifications();
+        // Svuota la lista locale
+        setNotifications([]);
+      } catch (err) {
+        console.error('Error deleting all notifications:', err);
+        setError(err.message || 'Errore durante l\'eliminazione di tutte le notifiche');
+      }
     }
   };
 
@@ -115,17 +130,30 @@ const Notifications = () => {
             )}
           </Typography>
           
-          {unreadCount > 0 && (
-            <Button 
-              variant="outlined" 
-              startIcon={<ReadIcon />}
-              onClick={handleMarkAllAsRead}
-            >
-              Segna tutte come lette
-            </Button>
-          )}
+          <Box>
+            {unreadCount > 0 && (
+              <Button 
+                variant="outlined" 
+                startIcon={<ReadIcon />}
+                onClick={handleMarkAllAsRead}
+                sx={{ mr: 2 }}
+              >
+                Segna tutte come lette
+              </Button>
+            )}
+            
+            {notifications.length > 0 && (
+              <Button 
+                variant="outlined" 
+                startIcon={<DeleteIcon />}
+                onClick={handleDeleteAllNotifications}
+                color="error"
+              >
+                Elimina tutte
+              </Button>
+            )}
+          </Box>
         </Box>
-
         {loading ? (
           <Box display="flex" justifyContent="center" p={5}>
             <CircularProgress />
@@ -179,20 +207,29 @@ const Notifications = () => {
                   >
                     <ListItemText
                       primary={
-                        <Box display="flex" alignItems="center">
-                          {!notification.read && (
-                            <UnreadIcon color="primary" fontSize="small" sx={{ mr: 1 }} />
-                          )}
-                          <Typography 
-                            variant="subtitle1" 
+                        <Box display="flex" alignItems="center" justifyContent="space-between">
+                          <Box display="flex" alignItems="center">
+                            {!notification.read && (
+                              <UnreadIcon color="primary" fontSize="small" sx={{ mr: 1 }} />
+                            )}
+                            <Typography 
+                              variant="subtitle1" 
+                              component="span"
+                              sx={{ fontWeight: notification.read ? 'normal' : 'bold' }}
+                            >
+                              {notification.type === 'match_scheduled' && 'Nuova partita programmata'}
+                              {notification.type === 'match_updated' && 'Aggiornamento partita'}
+                              {notification.type === 'result_entered' && 'Risultato da confermare'}
+                              {notification.type === 'result_confirmed' && 'Risultato confermato'}
+                              {notification.type === 'result_rejected' && 'Risultato rifiutato'}
+                            </Typography>
+                          </Box>
+                          <Typography
                             component="span"
-                            sx={{ fontWeight: notification.read ? 'normal' : 'bold' }}
+                            variant="caption"
+                            color="text.secondary"
                           >
-                            {notification.type === 'match_scheduled' && 'Nuova partita programmata'}
-                            {notification.type === 'match_updated' && 'Aggiornamento partita'}
-                            {notification.type === 'result_entered' && 'Risultato da confermare'}
-                            {notification.type === 'result_confirmed' && 'Risultato confermato'}
-                            {notification.type === 'result_rejected' && 'Risultato rifiutato'}
+                            {moment(notification.createdAt).fromNow()}
                           </Typography>
                         </Box>
                       }
@@ -206,19 +243,12 @@ const Notifications = () => {
                           >
                             {notification.message}
                           </Typography>
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            {moment(notification.createdAt).fromNow()}
-                          </Typography>
                           {notification.match && (
                             <Button
                               size="small"
                               variant="text"
                               component={RouterLink}
-                              to={`/matches/${notification.match}`}
+                              to={`/matches/${typeof notification.match === 'object' && notification.match !== null ? notification.match._id : notification.match}`}
                               sx={{ mt: 1 }}
                             >
                               Dettagli partita

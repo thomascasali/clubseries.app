@@ -17,81 +17,127 @@ exports.processNotifications = async () => {
           { path: 'teamA', select: 'name' },
           { path: 'teamB', select: 'name' }
         ]
-      });
+      })
+      // Aggiungiamo un ordinamento per inviare le notifiche più vecchie prima
+      .sort({ createdAt: 1 })
+      // Limitiamo il numero di notifiche processate per batch per evitare sovraccarichi
+      .limit(50);
     
-      if (pendingNotifications.length > 0) {
-        logger.info(`Elaborazione di ${pendingNotifications.length} notifiche in sospeso`);
-        
-        // Log dettagliato dei tipi di notifiche
-        const notificationTypes = {};
-        pendingNotifications.forEach(notification => {
-          const type = notification.type || 'unknown';
-          notificationTypes[type] = (notificationTypes[type] || 0) + 1;
-        });
-        logger.info(`Tipi di notifiche: ${JSON.stringify(notificationTypes)}`);
-      } else {
-        return; // Nessuna notifica da processare, usciamo silenziosamente
+    if (pendingNotifications.length === 0) {
+      return; // Nessuna notifica da processare, usciamo silenziosamente
+    }
+    
+    logger.info(`Elaborazione di ${pendingNotifications.length} notifiche in sospeso`);
+    
+    // Log dettagliato dei tipi di notifiche
+    const notificationTypes = {};
+    pendingNotifications.forEach(notification => {
+      const type = notification.type || 'unknown';
+      notificationTypes[type] = (notificationTypes[type] || 0) + 1;
+    });
+    logger.info(`Tipi di notifiche: ${JSON.stringify(notificationTypes)}`);
+    
+    // Raggruppiamo le notifiche per utente per evitare sovraccarichi
+    // ed inviare una sola notifica se ce ne sono diverse dello stesso tipo
+    const userNotifications = {};
+    
+    for (const notification of pendingNotifications) {
+      if (!notification.user || !notification.user._id) continue;
+      
+      const userId = notification.user._id.toString();
+      
+      if (!userNotifications[userId]) {
+        userNotifications[userId] = {
+          user: notification.user,
+          notifications: []
+        };
       }
+      
+      userNotifications[userId].notifications.push(notification);
+    }
     
     let successCount = 0;
     let failedCount = 0;
     
-
-    for (const notification of pendingNotifications) {
+    // Ora processiamo un utente alla volta con un piccolo ritardo tra gli utenti
+    // per evitare limiti di rate Firebase
+    for (const userId in userNotifications) {
+      const userData = userNotifications[userId];
+      
       try {
-        // Preparazione notifica FCM
-        const notificationTitle = getNotificationTitle(notification.type, notification.message);
-        const messageLines = notification.message.split('\n');
-        const notificationBody = messageLines[0] + (messageLines.length > 1 ? '...' : '');
-        
         // Verifica se l'utente ha token FCM registrati
-        if (notification.user && notification.user.fcmTokens && notification.user.fcmTokens.length > 0) {
-          // Invia notifica FCM
-          const fcmNotification = {
-            title: notificationTitle,
-            body: notificationBody
-          };
-          
-          const data = {
-            type: notification.type,
-            teamId: notification.team ? notification.team._id.toString() : '',
-            matchId: notification.match ? notification.match._id.toString() : '',
-            fullMessage: notification.message
-          };
-          
-          await fcmService.sendToDevices(
-            notification.user.fcmTokens, 
-            fcmNotification, 
-            data,
-            notification.user._id.toString()
-          );
-          logger.info(`FCM notification sent to user ${notification.user._id}`);
-          
-          notification.status = 'sent';
-          notification.sentAt = new Date();
-          await notification.save();
-          successCount++;
-        } else {
-          // L'utente non ha token FCM
-          notification.status = 'sent';
-          notification.sentAt = new Date();
-          notification.errorDetails = 'No FCM tokens available';
-          await notification.save();
-          successCount++;
+        if (!userData.user.fcmTokens || userData.user.fcmTokens.length === 0) {
+          // Segna tutte le notifiche come inviate (anche se non abbiamo token)
+          for (const notification of userData.notifications) {
+            notification.status = 'sent';
+            notification.sentAt = new Date();
+            notification.errorDetails = 'No FCM tokens available';
+            await notification.save();
+            successCount++;
+          }
+          continue;
         }
-      } catch (error) {
-        notification.status = 'failed';
-        notification.errorDetails = error.message;
-        await notification.save();
-        failedCount++;
         
-        const errorInfo = {
-          file: 'notificationService.js',
-          function: 'processNotifications',
-          notificationId: notification._id.toString()
-        };
-        logger.error(`Error processing notification: ${error.message}`, errorInfo);
+        // Estraiamo tutte le notifiche dell'utente
+        const notifications = userData.notifications;
+        
+        // Se c'è una sola notifica, la trattiamo normalmente
+        if (notifications.length === 1) {
+          const notification = notifications[0];
+          await processSingleNotification(notification, userData.user);
+          successCount++;
+        } 
+        // Se ci sono più notifiche dello stesso tipo, le raggruppiamo
+        else {
+          // Raggruppa per tipo
+          const notificationsByType = {};
+          
+          for (const notification of notifications) {
+            const type = notification.type;
+            if (!notificationsByType[type]) {
+              notificationsByType[type] = [];
+            }
+            notificationsByType[type].push(notification);
+          }
+          
+          // Processa ogni gruppo di notifiche
+          for (const type in notificationsByType) {
+            const typeNotifications = notificationsByType[type];
+            
+            if (typeNotifications.length === 1) {
+              // Se c'è solo una notifica di questo tipo, trattala normalmente
+              await processSingleNotification(typeNotifications[0], userData.user);
+              successCount++;
+            } else {
+              // Altrimenti, crea una notifica riepilogativa
+              await processBatchNotifications(typeNotifications, userData.user);
+              successCount += typeNotifications.length;
+            }
+          }
+        }
+        
+        // Aggiungiamo un breve ritardo tra gli utenti (100ms)
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error) {
+        // Se c'è un errore, segnamo tutte le notifiche dell'utente come fallite
+        for (const notification of userData.notifications) {
+          notification.status = 'failed';
+          notification.errorDetails = error.message;
+          await notification.save();
+          failedCount++;
+        }
+        
+        logger.error(`Error processing notifications for user ${userId}: ${error.message}`);
       }
+    }
+    
+    // Se ci sono ancora notifiche in sospeso, pianifichiamo un altro batch
+    const remainingCount = await Notification.countDocuments({ status: 'pending' });
+    if (remainingCount > 0) {
+      logger.info(`Rimangono ${remainingCount} notifiche in sospeso, pianificazione di un altro batch`);
+      // Pianifica un'altra esecuzione tra 5 secondi
+      setTimeout(() => this.processNotifications(), 5000);
     }
     
     if (successCount > 0 || failedCount > 0) {
@@ -106,6 +152,117 @@ exports.processNotifications = async () => {
     logger.error(`Error in processNotifications: ${error.message}`, errorInfo);
   }
 };
+
+/**
+ * Processa una singola notifica
+ * @param {Object} notification - Oggetto notifica
+ * @param {Object} user - Oggetto utente
+ */
+async function processSingleNotification(notification, user) {
+  // Preparazione notifica FCM
+  const notificationTitle = getNotificationTitle(notification.type, notification.message);
+  const messageLines = notification.message.split('\n');
+  const notificationBody = messageLines[0] + (messageLines.length > 1 ? '...' : '');
+  
+  // Invia notifica FCM
+  const fcmNotification = {
+    title: notificationTitle,
+    body: notificationBody
+  };
+  
+  const data = {
+    notificationId: notification._id.toString(),
+    type: notification.type,
+    teamId: notification.team ? notification.team._id.toString() : '',
+    matchId: notification.match ? notification.match._id.toString() : '',
+    fullMessage: notification.message,
+    timestamp: Date.now().toString() // Aggiungiamo timestamp per evitare duplicati
+  };
+  
+  await fcmService.sendToDevices(
+    user.fcmTokens, 
+    fcmNotification, 
+    data,
+    user._id.toString()
+  );
+  
+  logger.info(`FCM notification sent to user ${user._id}`);
+  
+  notification.status = 'sent';
+  notification.sentAt = new Date();
+  await notification.save();
+}
+
+/**
+ * Processa un gruppo di notifiche dello stesso tipo
+ * @param {Array} notifications - Notifiche da processare
+ * @param {Object} user - Oggetto utente
+ */
+async function processBatchNotifications(notifications, user) {
+  if (!notifications || notifications.length === 0) return;
+  
+  const type = notifications[0].type;
+  let title = '';
+  let body = '';
+  
+  // Crea un titolo e corpo appropriati in base al tipo
+  switch (type) {
+    case 'match_scheduled':
+      title = '🏐 Nuove Partite';
+      body = `Hai ${notifications.length} nuove partite programmate`;
+      break;
+    case 'match_updated':
+      title = '🔄 Aggiornamenti Partite';
+      body = `Ci sono aggiornamenti per ${notifications.length} partite`;
+      break;
+    case 'result_updated':
+      title = '📊 Risultati Aggiornati';
+      body = `Sono stati aggiornati ${notifications.length} risultati`;
+      break;
+    case 'result_entered':
+      title = '⚠️ Conferma Risultati';
+      body = `Ci sono ${notifications.length} risultati da confermare`;
+      break;
+    case 'result_confirmed':
+      title = '✅ Risultati Confermati';
+      body = `${notifications.length} risultati sono stati confermati`;
+      break;
+    default:
+      title = `📢 Club Series (${notifications.length})`;
+      body = `Hai ${notifications.length} nuove notifiche`;
+  }
+  
+  // Prepara i dati per FCM
+  const fcmNotification = {
+    title,
+    body
+  };
+  
+  const data = {
+    type: 'batch',
+    notificationType: type,
+    count: notifications.length.toString(),
+    notificationIds: notifications.map(n => n._id.toString()).join(','),
+    timestamp: Date.now().toString()
+  };
+  
+  // Invia notifica FCM
+  await fcmService.sendToDevices(
+    user.fcmTokens, 
+    fcmNotification, 
+    data,
+    user._id.toString()
+  );
+  
+  logger.info(`Batch FCM notification (${notifications.length} items) sent to user ${user._id}`);
+  
+  // Aggiorna tutte le notifiche
+  for (const notification of notifications) {
+    notification.status = 'sent';
+    notification.sentAt = new Date();
+    await notification.save();
+  }
+}
 
 /**
  * Ottiene un titolo appropriato per il tipo di notifica
@@ -189,9 +346,10 @@ exports.createTeamNotification = async (teamId, type, message, matchId = null) =
     await Notification.insertMany(notifications);
     
     // Processa immediatamente le notifiche
-    this.processNotifications();
+    setTimeout(() => this.processNotifications(), 1000);
     
-    // Invia anche al topic della squadra
+    // Invia anche al topic della squadra - COMMENTO COMPLETO per evitare notifiche doppie
+    /*
     try {
       const notificationTitle = getNotificationTitle(type, message);
       const messageLines = message.split('\n');
@@ -209,11 +367,12 @@ exports.createTeamNotification = async (teamId, type, message, matchId = null) =
         fullMessage: message
       };
       
-      // await fcmService.sendToTopic(`team_${teamId}`, fcmNotification, data);  //commentato per evitare doppie notifiche
+      // await fcmService.sendToTopic(`team_${teamId}`, fcmNotification, data);
       logger.info(`FCM notification sent to topic team_${teamId}`);
     } catch (topicError) {
       logger.error(`Error sending FCM notification to topic: ${topicError.message}`);
     }
+    */
     
     logger.info(`Created ${notifications.length} notifications for team ${teamId}`);
   } catch (error) {

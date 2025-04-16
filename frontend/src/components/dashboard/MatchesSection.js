@@ -34,7 +34,7 @@ const MatchesSection = ({
   const goldenSetsCount = checkGoldenSets();
   
   return (
-    <Paper elevation={2} sx={{ p: 3 }}>
+    <Paper elevation={2} sx={{ p: 3, width:'100% !important' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center">
           <CalendarIcon color="primary" sx={{ mr: 1 }} />
@@ -59,29 +59,34 @@ const MatchesSection = ({
       {loading ? (
         <Box display="flex" justifyContent="center" p={3}>
           <CircularProgress />
-        </Box>
-      ) : error ? (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      ) : allMatches.length === 0 ? (
-        // Se non ci sono partite in assoluto
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Nessuna partita presente nel database
-        </Alert>
-      ) : groupedMatches.length === 0 ? (
-        <Typography align="center" color="text.secondary" p={2}>
-          {showOnlySubscribed ? 
-            "Nessuna partita recente o programmata per le tue squadre" : 
-            "Nessuna partita recente o programmata"
-          }
-        </Typography>
-      ) : (
+          </Box>
+            ) : error ? (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            ) : allMatches.length === 0 ? (
+              // Se non ci sono partite in assoluto
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Nessuna partita presente nel database
+              </Alert>
+            ) : groupedMatches.length === 0 ? (
+              <Typography align="center" color="text.secondary" p={2}>
+                {showOnlySubscribed ? 
+                  "Nessuna partita recente o programmata per le tue squadre" : 
+                  "Nessuna partita recente o programmata"
+                }
+              </Typography>
+            ) : (
         <>
           <Grid container spacing={2}>
             {groupedMatches.map((group) => (
-              <Grid item xs={12} sm={6} md={4} key={group.id}
-              sx={{width:'100%'}}
+              <Grid item key={group.id}
+                sx={{ width: {
+                        xs: '100%',   // mobile → 1 per riga
+                        md: '48%',  // desktop → 3 per riga con margine
+                        lg: '31.5%'   // large screen → 4 per riga
+                      }
+                    }}          
               >
                 <MatchGroupCard group={group} />
               </Grid>

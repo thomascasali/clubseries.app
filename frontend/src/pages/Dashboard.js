@@ -6,7 +6,6 @@ import {
   Grid,
   Button
 } from '@mui/material';
-import { BugReport as DebugIcon } from '@mui/icons-material';
 import { AuthContext } from '../context/AuthContext';
 import { getMatches } from '../services/matchService';
 import { getSubscribedTeams } from '../services/userService';
@@ -15,7 +14,6 @@ import moment from 'moment';
 import 'moment/locale/it';
 
 // Componenti
-import DebugPanel from '../components/dashboard/DebugPanel';
 import MatchesSection from '../components/dashboard/MatchesSection';
 import TeamsSection from '../components/dashboard/TeamsSection';
 import NotificationsSection from '../components/dashboard/NotificationsSection';
@@ -254,17 +252,6 @@ const Dashboard = () => {
           </Typography>
         </Box>
 
-        {/* Sezione debug */}
-        {showDebug && (
-          <DebugPanel
-            debugInfo={debugInfo}
-            showOnlySubscribed={showOnlySubscribed}
-            subscribedTeams={subscribedTeams}
-            testDirectApi={testDirectApi}
-            loadAllMatches={loadAllMatches}
-          />
-        )}
-
         <Grid container spacing={4} sx={{ mt: 2 }}>
           {/* Sezione principale con le partite recenti e imminenti */}
           <Grid xs={12}>
@@ -304,19 +291,7 @@ const Dashboard = () => {
             </>
           )}
         </Grid>
-        
-        {/* Pulsante Debug spostato in fondo alla pagina */}
-        <Box display="flex" justifyContent="center" mt={6} mb={2}>
-          <Button 
-            startIcon={<DebugIcon />} 
-            color="info" 
-            variant="outlined" 
-            onClick={handleToggleDebug}
-            size="small"
-          >
-            Debug {showDebug ? 'Nascondi' : 'Mostra'}
-          </Button>
-        </Box>
+      
       </Box>
     </Container>
   );
