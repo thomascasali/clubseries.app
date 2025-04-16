@@ -138,7 +138,7 @@ const Register = () => {
         )}
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%', maxWidth: '100%' }}>
           <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ width: '100%', m: 0 }}> 
               <TextField
                 autoComplete="given-name"
                 name="firstName"
@@ -152,7 +152,7 @@ const Register = () => {
                 sx={{ mb: { xs: 0 } }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ width: '100%', m: 0 }}>
               <TextField
                 required
                 fullWidth
@@ -165,7 +165,7 @@ const Register = () => {
                 sx={{ mb: { xs: 0 } }}
               />
             </Grid>
-            <Grid item xs={12} sx={{ px: 0 }}>
+            <Grid item xs={12} sx={{ width: '100%', px: 0 }}>
               <TextField
                 required
                 fullWidth
@@ -178,7 +178,7 @@ const Register = () => {
                 sx={{ width: '100%' }}
               />
             </Grid>
-            <Grid item xs={12} sx={{ px: 0 }}>
+            <Grid item xs={12} sx={{ width: '100%', px: 0 }}>
               <TextField
                 required
                 fullWidth
@@ -192,7 +192,7 @@ const Register = () => {
                 sx={{ width: '100%' }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ width: '48%'}}>
               <TextField
                 required
                 fullWidth
@@ -206,7 +206,7 @@ const Register = () => {
                 sx={{ mb: { xs: 0 } }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ width: '48%'}}>
               <TextField
                 required
                 fullWidth

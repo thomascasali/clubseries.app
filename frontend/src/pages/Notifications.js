@@ -179,7 +179,7 @@ const Notifications = () => {
                 startIcon={<ReadIcon />}
                 onClick={handleMarkAllAsRead}
               >
-                Segna tutte lette
+                Tutte lette
               </Button>
             )}
             {/* Bottone ELIMINA TUTTE (condizionale) */}

@@ -11,7 +11,7 @@ const SignupPrompt = () => {
   return (
     <Paper elevation={2} sx={{ p: 3, mt: 2 }}>
       <Typography variant="h6" gutterBottom align="center">
-        Registrati per ricevere notifiche WhatsApp sulle partite
+        Registrati per ricevere notifiche sulle partite
       </Typography>
       <Typography variant="body1" paragraph align="center">
         Vuoi ricevere aggiornamenti in tempo reale sulle partite delle tue squadre preferite?

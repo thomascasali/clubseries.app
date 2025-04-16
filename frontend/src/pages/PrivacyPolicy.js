@@ -38,7 +38,7 @@ const PrivacyPolicy = () => {
             1. Titolare del trattamento
           </Typography>
           <Typography paragraph>
-            Il titolare del trattamento dei dati è AIBVC - Associazione Italiana Beach Volley Club, con sede in [inserire indirizzo], email: [inserire email].
+            Il titolare del trattamento dei dati è AIBVC - Associazione Italiana Beach Volley Club, con sede in Via Gaetano Astolfi, 95 – 00144 Roma (RM) , email: info@aibvc.it.
           </Typography>
 
           <Typography variant="h6" component="h3" gutterBottom sx={{ mt: 3 }}>
@@ -111,7 +111,7 @@ const PrivacyPolicy = () => {
             <li>Revocare il consenso al trattamento dei dati</li>
           </Typography>
           <Typography paragraph>
-            Per esercitare questi diritti, contattare AIBVC all'indirizzo email: [inserire email].
+            Per esercitare questi diritti, contattare AIBVC all'indirizzo email: info@aibvc.it.
           </Typography>
 
           <Typography variant="h6" component="h3" gutterBottom sx={{ mt: 3 }}>
@@ -132,7 +132,7 @@ const PrivacyPolicy = () => {
             10. Contatti
           </Typography>
           <Typography paragraph>
-            Per qualsiasi domanda riguardante questa privacy policy o il trattamento dei dati personali, contattare AIBVC all'indirizzo email: [inserire email].
+            Per qualsiasi domanda riguardante questa privacy policy o il trattamento dei dati personali, contattare AIBVC all'indirizzo email: info@aibvc.it.
           </Typography>
         </Box>
       </Paper>

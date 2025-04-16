@@ -118,8 +118,8 @@ const Notifications = () => {
   return (
     <Container maxWidth="md">
       <Box py={3}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4">
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h4" sx={{ mb: 2 }}>
             Le Mie Notifiche
             {unreadCount > 0 && (
               <Badge 
@@ -130,15 +130,15 @@ const Notifications = () => {
             )}
           </Typography>
           
-          <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2 }}>
             {unreadCount > 0 && (
               <Button 
                 variant="outlined" 
                 startIcon={<ReadIcon />}
                 onClick={handleMarkAllAsRead}
-                sx={{ mr: 2 }}
+                size="small"
               >
-                Segna tutte come lette
+                Tutte lette
               </Button>
             )}
             
@@ -148,12 +148,13 @@ const Notifications = () => {
                 startIcon={<DeleteIcon />}
                 onClick={handleDeleteAllNotifications}
                 color="error"
+                size="small"
               >
                 Elimina tutte
               </Button>
             )}
           </Box>
-        </Box>
+        </Box>  
         {loading ? (
           <Box display="flex" justifyContent="center" p={5}>
             <CircularProgress />
