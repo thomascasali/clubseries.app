@@ -4,12 +4,15 @@ import {
   Typography,
   Box,
   Grid,
-  Button
+  Button,
+  Alert,
+  AlertTitle
 } from '@mui/material';
 import { AuthContext } from '../context/AuthContext';
 import { getMatches } from '../services/matchService';
 import { getSubscribedTeams } from '../services/userService';
 import { getNotifications } from '../services/notificationService';
+import { isNotificationsSupported, isSafariBrowser } from '../services/firebaseService';
 import moment from 'moment';
 import 'moment/locale/it';
 
@@ -31,6 +34,8 @@ const Dashboard = () => {
   const [subscribedTeams, setSubscribedTeams] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [showOnlySubscribed, setShowOnlySubscribed] = useState(true);
+  const [notificationsSupported, setNotificationsSupported] = useState(true);
+  const [isSafari, setIsSafari] = useState(false);
   const [debugInfo, setDebugInfo] = useState({
     totalMatches: 0,
     relevantMatches: 0,
@@ -51,6 +56,28 @@ const Dashboard = () => {
     notifications: ''
   });
   const [showDebug, setShowDebug] = useState(false);
+
+  // Verifica il supporto per le notifiche Firebase al caricamento
+  useEffect(() => {
+    const checkNotificationSupport = async () => {
+      try {
+        const supported = await isNotificationsSupported();
+        setNotificationsSupported(supported);
+        
+        // Verifica se siamo su Safari
+        const safari = isSafariBrowser();
+        setIsSafari(safari);
+        
+        console.log(`Browser ${safari ? 'Safari' : 'non Safari'}, Notifiche push supportate: ${supported}`);
+      } catch (error) {
+        console.error('Errore nel controllo supporto notifiche:', error);
+        // Considerare non supportato in caso di errore
+        setNotificationsSupported(false);
+      }
+    };
+    
+    checkNotificationSupport();
+  }, []);
 
   // Carica tutte le partite
   const loadAllMatches = async () => {
@@ -250,11 +277,26 @@ const Dashboard = () => {
           >
             Benvenuto nel sistema di notifiche per le finali AIBVC Club Series. Ricevi aggiornamenti in tempo reale sulle partite delle tue squadre preferite.
           </Typography>
+          
+          {/* Avviso Safari per notifiche non supportate */}
+          {isSafari && !notificationsSupported && (
+            <Alert 
+              severity="info" 
+              sx={{ 
+                mb: 3,
+                mt: 2
+              }}
+            >
+              <AlertTitle>Notifiche limitate su Safari</AlertTitle>
+              Stai utilizzando Safari che non supporta completamente le notifiche push utilizzate da questa app.
+              Per ricevere notifiche in tempo reale delle partite, ti consigliamo di utilizzare Chrome, Firefox o Edge.
+            </Alert>
+          )}
         </Box>
 
         <Grid container spacing={4} sx={{ mt: 2 }}>
           {/* Sezione principale con le partite recenti e imminenti */}
-          <Grid xs={12}>
+          <Grid xs={12} sx={{width:'100%'}}>
             <MatchesSection
               loading={loading.matches}
               error={error.matches}
@@ -286,6 +328,8 @@ const Dashboard = () => {
                   loading={loading.notifications}
                   error={error.notifications}
                   notifications={notifications}
+                  notificationsSupported={notificationsSupported}
+                  isSafari={isSafari}
                 />
               </Grid>
             </>
